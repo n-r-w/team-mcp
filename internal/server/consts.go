@@ -37,7 +37,7 @@ SUBAGENT PROMPT TEMPLATE FOR CONSISTENT COMMUNICATION (MUST include in EACH suba
 - MUST post: {What kind of messages to post, in which topics, and when.}
 - MUST save the results of your work as messages, instead of duplicating these results in your response. Include in response only:
 	- Reference to the messages in the desk with full results.
-	- Brief summary of the results"`
+	- Brief summary of your job: findings, conclusions, changes, etc."`
 
 	// toolDeskRemoveName is MCP method name for desk_remove operation.
 	toolDeskRemoveName = "desk_remove"
