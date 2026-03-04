@@ -96,10 +96,7 @@ claude mcp add -s user --transport stdio team /path/to/team-mcp
 
 ```json
 "team": {
-  "command": "/path/to/team-mcp",
-  "env": {
-    "TEAM_MCP_LOG_LEVEL": "info"
-  }
+  "command": "/path/to/team-mcp"  
 }
 ```
 
