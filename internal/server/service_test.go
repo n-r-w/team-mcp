@@ -13,6 +13,25 @@ import (
 
 const testServerVersion = "test-version"
 
+// newTestOptions builds baseline constructor options used across server tests.
+func newTestOptions(coordination ICoordination) Options {
+	return Options{
+		Version:             testServerVersion,
+		MaxTitleLength:      200,
+		CoordinationUseCase: coordination,
+		ToolDescriptions: ToolDescriptions{
+			DeskCreate:    "",
+			DeskRemove:    "",
+			TopicCreate:   "",
+			TopicList:     "",
+			MessageCreate: "",
+			MessageList:   "",
+			MessageGet:    "",
+		},
+		SystemPrompt: "",
+	}
+}
+
 // TestRunSuccess verifies Run returns nil when MCP runtime completes successfully.
 func TestRunSuccess(t *testing.T) {
 	t.Parallel()
@@ -21,7 +40,7 @@ func TestRunSuccess(t *testing.T) {
 	coordination := NewMockICoordination(controller)
 	runtime := NewMockIMCPRuntime(controller)
 
-	service := New(testServerVersion, 200, coordination)
+	service := New(newTestOptions(coordination))
 	service.mcpRuntime = runtime
 
 	ctx := t.Context()
@@ -38,7 +57,7 @@ func TestRunErrorWrap(t *testing.T) {
 	coordination := NewMockICoordination(controller)
 	runtime := NewMockIMCPRuntime(controller)
 
-	service := New(testServerVersion, 200, coordination)
+	service := New(newTestOptions(coordination))
 	service.mcpRuntime = runtime
 
 	ctx := t.Context()
@@ -57,7 +76,7 @@ func TestNewRegistersSevenTools(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	coordination := NewMockICoordination(controller)
-	service := New(testServerVersion, 200, coordination)
+	service := New(newTestOptions(coordination))
 
 	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
 	require.True(t, ok)
@@ -80,7 +99,7 @@ func TestTopicCreateNotFound(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	coordination := NewMockICoordination(controller)
-	service := New(testServerVersion, 200, coordination)
+	service := New(newTestOptions(coordination))
 
 	ctx := t.Context()
 	coordination.EXPECT().TopicCreate(ctx, domain.TopicCreateRequest{DeskID: "desk-1", Title: "Topic"}).Return(
@@ -99,7 +118,7 @@ func TestMessageCreateValidation(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	service := New(testServerVersion, 200, NewMockICoordination(controller))
+	service := New(newTestOptions(NewMockICoordination(controller)))
 
 	_, _, err := service.messageCreateTool(
 		t.Context(),
@@ -115,7 +134,7 @@ func TestMessageGetNotFound(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	coordination := NewMockICoordination(controller)
-	service := New(testServerVersion, 200, coordination)
+	service := New(newTestOptions(coordination))
 
 	ctx := t.Context()
 	coordination.EXPECT().MessageGet(ctx, domain.MessageGetRequest{MessageID: "msg-1"}).Return(
@@ -126,6 +145,66 @@ func TestMessageGetNotFound(t *testing.T) {
 	_, output, err := service.messageGetTool(ctx, nil, messageGetInput{MessageID: "msg-1"})
 	require.NoError(t, err)
 	require.Equal(t, string(domain.BusinessStatusNotFound), output.Status)
+}
+
+// TestNewAppliesCustomDescriptions verifies constructor options override default MCP tool descriptions.
+func TestNewAppliesCustomDescriptions(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(Options{
+		Version:             testServerVersion,
+		MaxTitleLength:      200,
+		CoordinationUseCase: coordination,
+		ToolDescriptions: ToolDescriptions{
+			DeskCreate:    "custom desk_create",
+			DeskRemove:    "custom desk_remove",
+			TopicCreate:   "custom topic_create",
+			TopicList:     "custom topic_list",
+			MessageCreate: "custom message_create",
+			MessageList:   "custom message_list",
+			MessageGet:    "custom message_get",
+		},
+		SystemPrompt: "custom system prompt",
+	})
+
+	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
+	require.True(t, ok)
+
+	registeredTools, err := listRegisteredToolsModern(t, t.Context(), runtimeServer)
+	require.NoError(t, err)
+	require.Equal(t, "custom desk_create", registeredTools[toolDeskCreateName])
+	require.Equal(t, "custom desk_remove", registeredTools[toolDeskRemoveName])
+	require.Equal(t, "custom topic_create", registeredTools[toolTopicCreateName])
+	require.Equal(t, "custom topic_list", registeredTools[toolTopicListName])
+	require.Equal(t, "custom message_create", registeredTools[toolMessageCreateName])
+	require.Equal(t, "custom message_list", registeredTools[toolMessageListName])
+	require.Equal(t, "custom message_get", registeredTools[toolMessageGetName])
+	require.Equal(t, "custom system prompt", service.options.SystemPrompt)
+}
+
+// TestNewFallsBackToDefaultDescriptions verifies empty overrides preserve default descriptions and prompt.
+func TestNewFallsBackToDefaultDescriptions(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(newTestOptions(coordination))
+
+	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
+	require.True(t, ok)
+
+	registeredTools, err := listRegisteredToolsModern(t, t.Context(), runtimeServer)
+	require.NoError(t, err)
+	require.Equal(t, toolDeskCreateDesc, registeredTools[toolDeskCreateName])
+	require.Equal(t, toolDeskRemoveDesc, registeredTools[toolDeskRemoveName])
+	require.Equal(t, toolTopicCreateDesc, registeredTools[toolTopicCreateName])
+	require.Equal(t, toolTopicListDesc, registeredTools[toolTopicListName])
+	require.Equal(t, toolMessageCreateDesc, registeredTools[toolMessageCreateName])
+	require.Equal(t, toolMessageListDesc, registeredTools[toolMessageListName])
+	require.Equal(t, toolMessageGetDesc, registeredTools[toolMessageGetName])
+	require.Equal(t, systemPrompt, service.options.SystemPrompt)
 }
 
 // listRegisteredToolsModern reads MCP server tool registry into name->description mapping.

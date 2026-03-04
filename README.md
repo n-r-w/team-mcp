@@ -76,6 +76,30 @@ task build
   * Maximum allowed title length for topics/messages (in runes).
   * Must be `>= 1`.
 
+- `TEAM_MCP_TOOL_DESK_CREATE_DESC` (optional, default: built-in `desk_create` description)
+  * Overrides MCP `desk_create` tool description.
+
+- `TEAM_MCP_TOOL_DESK_REMOVE_DESC` (optional, default: built-in `desk_remove` description)
+  * Overrides MCP `desk_remove` tool description.
+
+- `TEAM_MCP_TOOL_TOPIC_CREATE_DESC` (optional, default: built-in `topic_create` description)
+  * Overrides MCP `topic_create` tool description.
+
+- `TEAM_MCP_TOOL_TOPIC_LIST_DESC` (optional, default: built-in `topic_list` description)
+  * Overrides MCP `topic_list` tool description.
+
+- `TEAM_MCP_TOOL_MESSAGE_CREATE_DESC` (optional, default: built-in `message_create` description)
+  * Overrides MCP `message_create` tool description.
+
+- `TEAM_MCP_TOOL_MESSAGE_LIST_DESC` (optional, default: built-in `message_list` description)
+  * Overrides MCP `message_list` tool description.
+
+- `TEAM_MCP_TOOL_MESSAGE_GET_DESC` (optional, default: built-in `message_get` description)
+  * Overrides MCP `message_get` tool description.
+
+- `TEAM_MCP_SYSTEM_PROMPT` (optional, default: built-in server instructions)
+  * Overrides MCP server instructions exposed via `ServerOptions.Instructions`.
+
 - `TEAM_MCP_LOG_LEVEL` (optional, default: `info`)
   * Log level for structured JSON logs.
   * Allowed values: `debug`, `info`, `warn`, `error`.

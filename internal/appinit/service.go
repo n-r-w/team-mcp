@@ -47,7 +47,21 @@ func New(cfg *config.Config, version string) (*Service, error) {
 		usecase.Options{SessionTTL: cfg.SessionTTL, MaxTitleLength: cfg.MaxTitleLength},
 	)
 
-	mcpSrv := server.New(version, cfg.MaxTitleLength, usecaseService)
+	mcpSrv := server.New(server.Options{
+		Version:             version,
+		MaxTitleLength:      cfg.MaxTitleLength,
+		CoordinationUseCase: usecaseService,
+		ToolDescriptions: server.ToolDescriptions{
+			DeskCreate:    cfg.ToolDeskCreateDesc,
+			DeskRemove:    cfg.ToolDeskRemoveDesc,
+			TopicCreate:   cfg.ToolTopicCreateDesc,
+			TopicList:     cfg.ToolTopicListDesc,
+			MessageCreate: cfg.ToolMessageCreateDesc,
+			MessageList:   cfg.ToolMessageListDesc,
+			MessageGet:    cfg.ToolMessageGetDesc,
+		},
+		SystemPrompt: cfg.SystemPrompt,
+	})
 
 	return &Service{
 		runServer: mcpSrv.Run,

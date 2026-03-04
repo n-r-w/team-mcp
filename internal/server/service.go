@@ -12,32 +12,67 @@ import (
 
 // Service registers MCP tools and maps DTOs to coordination use-cases.
 type Service struct {
-	mcpRuntime          IMCPRuntime
-	coordinationUseCase ICoordination
-	maxTitleLength      int
+	mcpRuntime IMCPRuntime
+	options    Options
 }
 
 // New constructs MCP inbound adapter service.
-func New(version string, maxTitleLength int, coordinationUseCase ICoordination) *Service {
+func New(options Options) *Service {
+	applyDefaultMetadata(&options)
+
 	mcpServer := mcp.NewServer(
 		&mcp.Implementation{ //nolint:exhaustruct // external SDK
 			Name:    serverName,
-			Version: version,
+			Version: options.Version,
 			Title:   serverTitle,
 		},
 		&mcp.ServerOptions{ //nolint:exhaustruct // external SDK
-			Instructions: systemPrompt,
+			Instructions: options.SystemPrompt,
 		},
 	)
 
 	src := &Service{
-		mcpRuntime:          mcpServer,
-		coordinationUseCase: coordinationUseCase,
-		maxTitleLength:      maxTitleLength,
+		mcpRuntime: mcpServer,
+		options:    options,
 	}
 	src.register(mcpServer)
 
 	return src
+}
+
+// applyDefaultMetadata fills optional tool descriptions and system prompt with built-in defaults.
+func applyDefaultMetadata(options *Options) {
+	if strings.TrimSpace(options.ToolDescriptions.DeskCreate) == "" {
+		options.ToolDescriptions.DeskCreate = toolDeskCreateDesc
+	}
+
+	if strings.TrimSpace(options.ToolDescriptions.DeskRemove) == "" {
+		options.ToolDescriptions.DeskRemove = toolDeskRemoveDesc
+	}
+
+	if strings.TrimSpace(options.ToolDescriptions.TopicCreate) == "" {
+		options.ToolDescriptions.TopicCreate = toolTopicCreateDesc
+	}
+
+	if strings.TrimSpace(options.ToolDescriptions.TopicList) == "" {
+		options.ToolDescriptions.TopicList = toolTopicListDesc
+	}
+
+	if strings.TrimSpace(options.ToolDescriptions.MessageCreate) == "" {
+		options.ToolDescriptions.MessageCreate = toolMessageCreateDesc
+	}
+
+	if strings.TrimSpace(options.ToolDescriptions.MessageList) == "" {
+		options.ToolDescriptions.MessageList = toolMessageListDesc
+	}
+
+	if strings.TrimSpace(options.ToolDescriptions.MessageGet) == "" {
+		options.ToolDescriptions.MessageGet = toolMessageGetDesc
+	}
+
+	if strings.TrimSpace(options.SystemPrompt) == "" {
+		options.SystemPrompt = systemPrompt
+	}
 }
 
 // Run starts the MCP server with stdio transport.
@@ -61,32 +96,32 @@ func emptyObjectInputSchema() map[string]any {
 func (s *Service) register(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
 		Name:        toolDeskCreateName,
-		Description: toolDeskCreateDesc,
+		Description: s.options.ToolDescriptions.DeskCreate,
 		InputSchema: emptyObjectInputSchema(),
 	}, s.deskCreateTool)
 	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
 		Name:        toolDeskRemoveName,
-		Description: toolDeskRemoveDesc,
+		Description: s.options.ToolDescriptions.DeskRemove,
 	}, s.deskRemoveTool)
 	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
 		Name:        toolTopicCreateName,
-		Description: toolTopicCreateDesc,
+		Description: s.options.ToolDescriptions.TopicCreate,
 	}, s.topicCreateTool)
 	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
 		Name:        toolTopicListName,
-		Description: toolTopicListDesc,
+		Description: s.options.ToolDescriptions.TopicList,
 	}, s.topicListTool)
 	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
 		Name:        toolMessageCreateName,
-		Description: toolMessageCreateDesc,
+		Description: s.options.ToolDescriptions.MessageCreate,
 	}, s.messageCreateTool)
 	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
 		Name:        toolMessageListName,
-		Description: toolMessageListDesc,
+		Description: s.options.ToolDescriptions.MessageList,
 	}, s.messageListTool)
 	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
 		Name:        toolMessageGetName,
-		Description: toolMessageGetDesc,
+		Description: s.options.ToolDescriptions.MessageGet,
 	}, s.messageGetTool)
 }
 
@@ -96,7 +131,7 @@ func (s *Service) deskCreateTool(
 	_ *mcp.CallToolRequest,
 	_ deskCreateInput,
 ) (*mcp.CallToolResult, deskCreateOutput, error) {
-	result, err := s.coordinationUseCase.DeskCreate(ctx)
+	result, err := s.options.CoordinationUseCase.DeskCreate(ctx)
 	if err != nil {
 		return nil, deskCreateOutput{}, fmt.Errorf("desk_create failed: %w", err)
 	}
@@ -115,7 +150,7 @@ func (s *Service) deskRemoveTool(
 		return nil, deskRemoveOutput{}, err
 	}
 
-	result, err := s.coordinationUseCase.DeskRemove(ctx, domain.DeskRemoveRequest{DeskID: deskID})
+	result, err := s.options.CoordinationUseCase.DeskRemove(ctx, domain.DeskRemoveRequest{DeskID: deskID})
 	if err != nil {
 		return nil, deskRemoveOutput{}, fmt.Errorf("desk_remove failed: %w", err)
 	}
@@ -135,11 +170,11 @@ func (s *Service) topicCreateTool(
 		return nil, topicCreateOutput{}, err
 	}
 
-	if err := validateTitle(title, s.maxTitleLength); err != nil {
+	if err := validateTitle(title, s.options.MaxTitleLength); err != nil {
 		return nil, topicCreateOutput{}, err
 	}
 
-	result, err := s.coordinationUseCase.TopicCreate(ctx, domain.TopicCreateRequest{DeskID: deskID, Title: title})
+	result, err := s.options.CoordinationUseCase.TopicCreate(ctx, domain.TopicCreateRequest{DeskID: deskID, Title: title})
 	if err != nil {
 		return nil, topicCreateOutput{}, fmt.Errorf("topic_create failed: %w", err)
 	}
@@ -162,7 +197,7 @@ func (s *Service) topicListTool(
 		return nil, topicListOutput{}, err
 	}
 
-	result, err := s.coordinationUseCase.TopicList(ctx, domain.TopicListRequest{DeskID: deskID})
+	result, err := s.options.CoordinationUseCase.TopicList(ctx, domain.TopicListRequest{DeskID: deskID})
 	if err != nil {
 		return nil, topicListOutput{}, fmt.Errorf("topic_list failed: %w", err)
 	}
@@ -186,7 +221,7 @@ func (s *Service) messageCreateTool(
 		return nil, messageCreateOutput{}, err
 	}
 
-	if err := validateTitle(title, s.maxTitleLength); err != nil {
+	if err := validateTitle(title, s.options.MaxTitleLength); err != nil {
 		return nil, messageCreateOutput{}, err
 	}
 
@@ -194,7 +229,7 @@ func (s *Service) messageCreateTool(
 		return nil, messageCreateOutput{}, errors.New("content is required")
 	}
 
-	result, err := s.coordinationUseCase.MessageCreate(ctx, domain.MessageCreateRequest{
+	result, err := s.options.CoordinationUseCase.MessageCreate(ctx, domain.MessageCreateRequest{
 		TopicID: topicID,
 		Title:   title,
 		Content: input.Content,
@@ -240,7 +275,7 @@ func (s *Service) messageListTool(
 		return nil, messageListOutput{}, err
 	}
 
-	result, err := s.coordinationUseCase.MessageList(ctx, domain.MessageListRequest{TopicID: topicID})
+	result, err := s.options.CoordinationUseCase.MessageList(ctx, domain.MessageListRequest{TopicID: topicID})
 	if err != nil {
 		return nil, messageListOutput{}, fmt.Errorf("message_list failed: %w", err)
 	}
@@ -265,7 +300,7 @@ func (s *Service) messageGetTool(
 		return nil, messageGetOutput{}, err
 	}
 
-	result, err := s.coordinationUseCase.MessageGet(ctx, domain.MessageGetRequest{MessageID: messageID})
+	result, err := s.options.CoordinationUseCase.MessageGet(ctx, domain.MessageGetRequest{MessageID: messageID})
 	if err != nil {
 		return nil, messageGetOutput{}, fmt.Errorf("message_get failed: %w", err)
 	}
