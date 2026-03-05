@@ -8,52 +8,6 @@ Team MCP Server.
 
 The agent orchestrator defines a channel-based interaction model, and sub-agents exchange messages only through it predictably and in isolation.
 
-
-const (
-	// toolDeskCreateName is MCP method name for desk_create operation.
-	toolDeskCreateName = "desk_create"
-	// toolDeskCreateDesc explains desk_create behavior to LLM tool consumers.
-	toolDeskCreateDesc = "Creates a collaboration desk and returns desk_id. Use title to describe desk purpose."
-
-	// toolDeskRemoveName is MCP method name for desk_remove operation.
-	toolDeskRemoveName = "desk_remove"
-	// toolDeskRemoveDesc explains synchronous cascade semantics for desk_remove.
-	toolDeskRemoveDesc = "Removes desk and all linked topics/messages from memory and disk. Returns status: ok or not_found."
-
-	// toolTopicCreateName is MCP method name for topic_create operation.
-	toolTopicCreateName = "topic_create"
-	// toolTopicCreateDesc explains idempotent topic creation behavior.
-	toolTopicCreateDesc = "Creates topic in desk and returns topic_id. If desk_id is missing, returns status=not_found."
-
-	// toolTopicListName is MCP method name for topic_list operation.
-	toolTopicListName = "topic_list"
-	// toolTopicListDesc explains ordered topic header listing contract.
-	toolTopicListDesc = "Lists ordered topic headers for desk. Returns topics[{topic_id,title}] or status=not_found."
-
-	// toolMessageCreateName is MCP method name for message_create operation.
-	toolMessageCreateName = "message_create"
-	// toolMessageCreateDesc explains duplicate-title semantics for message_create.
-	toolMessageCreateDesc = "Creates message with topic_id,title,content. Returns message_id, status=not_found, or status=duplicate_title with existing_message_id and status_message."
-
-	// toolMessageListName is MCP method name for message_list operation.
-	toolMessageListName = "message_list"
-	// toolMessageListDesc explains ordered message header listing contract.
-	toolMessageListDesc = "Lists ordered message headers for topic. Returns messages[{message_id,title}] or status=not_found."
-
-	// toolMessageGetName is MCP method name for message_get operation.
-	toolMessageGetName = "message_get"
-	// toolMessageGetDesc explains full payload retrieval contract for message_get.
-	toolMessageGetDesc = "Returns full message payload {title,content} by message_id or status=not_found."
-
-	// serverName is transport-visible runtime server identifier.
-	serverName = "team-mcp"
-	// serverTitle is human-readable title reported by MCP runtime.
-	serverTitle = "Team MCP"
-	// systemPrompt defines role-agnostic tool usage policy for LLM callers.
-	systemPrompt = "Desk-topic-message coordination model: all callers can use all tools with valid input. " +
-		"Role split between orchestrator and subagents is organizational guidance only and is not enforced by access checks."
-)
-
 ## MCP Tools
 1. **desk_create:** Creates a collaboration desk. 
 2. **desk_remove:** Removes a desk and all linked topics/messages from memory and disk. 
