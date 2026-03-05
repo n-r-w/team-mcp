@@ -92,7 +92,7 @@ func emptyObjectInputSchema() map[string]any {
 	}
 }
 
-// Register adds desk/topic/message tools to the MCP server.
+// register adds desk/topic/message tools to the MCP server.
 func (s *Service) register(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
 		Name:        toolDeskCreateName,
