@@ -16,6 +16,14 @@ type Config struct {
 	MaxBufferedMessages      int
 	MaxActiveRuns            int
 	MaxTitleLength           int
+	ToolDeskCreateDesc       string
+	ToolDeskRemoveDesc       string
+	ToolTopicCreateDesc      string
+	ToolTopicListDesc        string
+	ToolMessageCreateDesc    string
+	ToolMessageListDesc      string
+	ToolMessageGetDesc       string
+	SystemPrompt             string
 	LogLevel                 string
 	LifecycleCollectInterval time.Duration
 }
@@ -27,6 +35,14 @@ type envConfig struct {
 	MaxBufferedMessages      int           `env:"TEAM_MCP_MAX_BUFFERED_MESSAGES" envDefault:"10000"`
 	MaxActiveRuns            int           `env:"TEAM_MCP_MAX_ACTIVE_RUNS" envDefault:"1000"`
 	MaxTitleLength           int           `env:"TEAM_MCP_MAX_TITLE_LENGTH" envDefault:"200"`
+	ToolDeskCreateDesc       string        `env:"TEAM_MCP_TOOL_DESK_CREATE_DESC"`
+	ToolDeskRemoveDesc       string        `env:"TEAM_MCP_TOOL_DESK_REMOVE_DESC"`
+	ToolTopicCreateDesc      string        `env:"TEAM_MCP_TOOL_TOPIC_CREATE_DESC"`
+	ToolTopicListDesc        string        `env:"TEAM_MCP_TOOL_TOPIC_LIST_DESC"`
+	ToolMessageCreateDesc    string        `env:"TEAM_MCP_TOOL_MESSAGE_CREATE_DESC"`
+	ToolMessageListDesc      string        `env:"TEAM_MCP_TOOL_MESSAGE_LIST_DESC"`
+	ToolMessageGetDesc       string        `env:"TEAM_MCP_TOOL_MESSAGE_GET_DESC"`
+	SystemPrompt             string        `env:"TEAM_MCP_SYSTEM_PROMPT"`
 	LogLevel                 string        `env:"TEAM_MCP_LOG_LEVEL" envDefault:"info"`
 	LifecycleCollectInterval time.Duration `env:"TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL" envDefault:"60s"`
 }
@@ -49,6 +65,14 @@ func Load() (*Config, error) {
 		MaxBufferedMessages:      parsed.MaxBufferedMessages,
 		MaxActiveRuns:            parsed.MaxActiveRuns,
 		MaxTitleLength:           parsed.MaxTitleLength,
+		ToolDeskCreateDesc:       parsed.ToolDeskCreateDesc,
+		ToolDeskRemoveDesc:       parsed.ToolDeskRemoveDesc,
+		ToolTopicCreateDesc:      parsed.ToolTopicCreateDesc,
+		ToolTopicListDesc:        parsed.ToolTopicListDesc,
+		ToolMessageCreateDesc:    parsed.ToolMessageCreateDesc,
+		ToolMessageListDesc:      parsed.ToolMessageListDesc,
+		ToolMessageGetDesc:       parsed.ToolMessageGetDesc,
+		SystemPrompt:             parsed.SystemPrompt,
 		LogLevel:                 parsed.LogLevel,
 		LifecycleCollectInterval: parsed.LifecycleCollectInterval,
 	}

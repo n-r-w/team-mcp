@@ -18,8 +18,8 @@ CRITICAL RULES:
 1. Collaboration desk is the MAIN communication channel for subagents.
 2. MUST NEVER execute subagent without "SUBAGENT PROMPT TEMPLATE"!
 3. MUST NEVER bypass the desk in communication! E.g.:
-	1) Planner subagent creates a plan and posts it in the desk
-	2) GOOD: Main agent execute coding subagent and add to its prompt reference to the plan message in the desk.
+	- Planner subagent creates a plan and posts it in the desk
+	- GOOD: Main agent execute coding subagent and add to its prompt reference to the plan message in the desk.
 	   BAD: Main agent execute coding subagent and add to its prompt implementation instructions directly, without referencing the plan message in the desk.
 	   WHY BAD: Critical details will be lost during information transfer.
 4. Subagents DO NOT have access to tools desk_create and desk_remove. Only the main agent can create or remove desks.
@@ -28,7 +28,7 @@ CRITICAL RULES:
     A developer creates a feature, and a tester needs to test it.
 	If you run these subagents in parallel, the tester will start testing before the developer creates the feature, leading to errors.
 	
-SUBAGENT PROMPT TEMPLATE FOR CONSISTENT COMMUNICATION (MUST include in EACH subagent's prompt AS-IS):
+SUBAGENT PROMPT TEMPLATE FOR CONSISTENT COMMUNICATION. MUST include in EACH subagent's prompt AS-IS:
 "Collaboration protocol:
 - You have access to a shared collaboration desk with desk_id: {desk_id}. Use this desk to coordinate your job with other agents.
 - Your teammates: {List of subagents and their roles}.
@@ -37,7 +37,7 @@ SUBAGENT PROMPT TEMPLATE FOR CONSISTENT COMMUNICATION (MUST include in EACH suba
 - MUST post: {What kind of messages to post, in which topics, and when.}
 - MUST save the results of your work as messages, instead of duplicating these results in your response. Include in response only:
 	- Reference to the messages in the desk with full results.
-	- Brief summary of the results"`
+	- Brief summary of your job: findings, conclusions, changes, etc."`
 
 	// toolDeskRemoveName is MCP method name for desk_remove operation.
 	toolDeskRemoveName = "desk_remove"
