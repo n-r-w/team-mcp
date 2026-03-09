@@ -47,16 +47,17 @@ func (s *Service) DeskCreate(ctx context.Context) (domain.DeskCreateResult, erro
 		return domain.DeskCreateResult{}, fmt.Errorf("create desk: %w", err)
 	}
 
-	if err := s.deskStore.EnsureDesk(ctx, deskID, createdAt); err != nil {
+	ensureDeskErr := s.deskStore.EnsureDesk(ctx, deskID, createdAt)
+	if ensureDeskErr != nil {
 		rollbackErr := s.runRegistry.DeleteDesk(ctx, deskID)
 		if rollbackErr != nil {
 			return domain.DeskCreateResult{}, errors.Join(
-				fmt.Errorf("initialize desk storage: %w", err),
+				fmt.Errorf("initialize desk storage: %w", ensureDeskErr),
 				fmt.Errorf("rollback desk metadata: %w", rollbackErr),
 			)
 		}
 
-		return domain.DeskCreateResult{}, fmt.Errorf("initialize desk storage: %w", err)
+		return domain.DeskCreateResult{}, fmt.Errorf("initialize desk storage: %w", ensureDeskErr)
 	}
 
 	slog.InfoContext(ctx, "desk created", logFieldEvent, eventDeskCreate, logFieldDeskID, deskID)
@@ -87,8 +88,9 @@ func (s *Service) DeskRemove(ctx context.Context, request domain.DeskRemoveReque
 		return result, nil
 	}
 
-	if err := s.removeDeskCascade(ctx, snapshot, false); err != nil {
-		return domain.DeskRemoveResult{}, fmt.Errorf("cascade desk remove: %w", err)
+	removeDeskErr := s.removeDeskCascade(ctx, snapshot, false)
+	if removeDeskErr != nil {
+		return domain.DeskRemoveResult{}, fmt.Errorf("cascade desk remove: %w", removeDeskErr)
 	}
 
 	result := domain.DeskRemoveResult{Status: domain.BusinessStatusOK}
@@ -124,8 +126,9 @@ func (s *Service) TopicCreate(
 		return domain.TopicCreateResult{Status: domain.BusinessStatusNotFound, TopicID: ""}, nil
 	}
 
-	if err := s.headerQueue.EnsureTopic(ctx, request.DeskID, header); err != nil {
-		return domain.TopicCreateResult{}, fmt.Errorf("ensure topic order: %w", err)
+	ensureTopicErr := s.headerQueue.EnsureTopic(ctx, request.DeskID, header)
+	if ensureTopicErr != nil {
+		return domain.TopicCreateResult{}, fmt.Errorf("ensure topic order: %w", ensureTopicErr)
 	}
 
 	return domain.TopicCreateResult{Status: domain.BusinessStatusOK, TopicID: header.TopicID}, nil
@@ -136,25 +139,15 @@ func (s *Service) TopicList(
 	ctx context.Context,
 	request domain.TopicListRequest,
 ) (domain.TopicListResult, error) {
-	exists, err := s.runRegistry.DeskExists(ctx, request.DeskID)
-	if err != nil {
-		return domain.TopicListResult{}, fmt.Errorf("check desk existence: %w", err)
-	}
-
-	if !exists {
-		return domain.TopicListResult{Status: domain.BusinessStatusNotFound, Topics: nil}, nil
-	}
-
-	topics, found, err := s.headerQueue.ListTopics(ctx, request.DeskID)
-	if err != nil {
-		return domain.TopicListResult{}, fmt.Errorf("list topics: %w", err)
-	}
-
-	if !found {
-		topics = []domain.TopicHeader{}
-	}
-
-	return domain.TopicListResult{Status: domain.BusinessStatusOK, Topics: topics}, nil
+	return listOrderedResult(
+		ctx,
+		request.DeskID,
+		s.runRegistry.DeskExists,
+		s.headerQueue.ListTopics,
+		"check desk existence",
+		"list topics",
+		topicListResult,
+	)
 }
 
 // MessageCreate creates message metadata and payload while preserving duplicate-title semantics.
@@ -177,12 +170,14 @@ func (s *Service) MessageCreate(
 		return result, nil
 	}
 
-	if err := s.persistMessagePayload(ctx, request.TopicID, meta, request.Content); err != nil {
-		return domain.MessageCreateResult{}, err
+	persistErr := s.persistMessagePayload(ctx, request.TopicID, meta, request.Content)
+	if persistErr != nil {
+		return domain.MessageCreateResult{}, persistErr
 	}
 
-	if err := s.appendMessageHeader(ctx, meta, request.Title); err != nil {
-		return domain.MessageCreateResult{}, err
+	appendHeaderErr := s.appendMessageHeader(ctx, meta, request.Title)
+	if appendHeaderErr != nil {
+		return domain.MessageCreateResult{}, appendHeaderErr
 	}
 
 	result := domain.MessageCreateResult{
@@ -340,25 +335,68 @@ func (s *Service) MessageList(
 	ctx context.Context,
 	request domain.MessageListRequest,
 ) (domain.MessageListResult, error) {
-	exists, err := s.runRegistry.TopicExists(ctx, request.TopicID)
+	return listOrderedResult(
+		ctx,
+		request.TopicID,
+		s.runRegistry.TopicExists,
+		s.headerQueue.ListMessages,
+		"check topic existence",
+		"list message headers",
+		messageListResult,
+	)
+}
+
+// listOrderedResult resolves parent existence first and maps ordered headers into the target business result.
+func listOrderedResult[T any, R any](
+	ctx context.Context,
+	id string,
+	existsFn func(context.Context, string) (bool, error),
+	listFn func(context.Context, string) ([]T, bool, error),
+	existsErrMessage string,
+	listErrMessage string,
+	buildResult func(domain.BusinessStatus, []T) R,
+) (R, error) {
+	exists, err := existsFn(ctx, id)
 	if err != nil {
-		return domain.MessageListResult{}, fmt.Errorf("check topic existence: %w", err)
+		var zeroResult R
+
+		return zeroResult, fmt.Errorf("%s: %w", existsErrMessage, err)
 	}
 
 	if !exists {
-		return domain.MessageListResult{Status: domain.BusinessStatusNotFound, Messages: nil}, nil
+		return buildResult(domain.BusinessStatusNotFound, nil), nil
 	}
 
-	headers, found, err := s.headerQueue.ListMessages(ctx, request.TopicID)
+	headers, found, err := listFn(ctx, id)
 	if err != nil {
-		return domain.MessageListResult{}, fmt.Errorf("list message headers: %w", err)
+		var zeroResult R
+
+		return zeroResult, fmt.Errorf("%s: %w", listErrMessage, err)
 	}
 
 	if !found {
-		headers = []domain.MessageHeader{}
+		headers = []T{}
 	}
 
-	return domain.MessageListResult{Status: domain.BusinessStatusOK, Messages: headers}, nil
+	return buildResult(domain.BusinessStatusOK, headers), nil
+}
+
+// topicListResult preserves business not_found and empty-slice semantics for topic listing.
+func topicListResult(status domain.BusinessStatus, topics []domain.TopicHeader) domain.TopicListResult {
+	if status == domain.BusinessStatusNotFound {
+		return domain.TopicListResult{Status: status, Topics: nil}
+	}
+
+	return domain.TopicListResult{Status: status, Topics: topics}
+}
+
+// messageListResult preserves business not_found and empty-slice semantics for message listing.
+func messageListResult(status domain.BusinessStatus, messages []domain.MessageHeader) domain.MessageListResult {
+	if status == domain.BusinessStatusNotFound {
+		return domain.MessageListResult{Status: status, Messages: nil}
+	}
+
+	return domain.MessageListResult{Status: status, Messages: messages}
 }
 
 // MessageGet returns full message body for existing message identifier.
@@ -418,8 +456,9 @@ func (s *Service) CleanupAllRuns(ctx context.Context) error {
 			continue
 		}
 
-		if err := s.removeDeskCascade(ctx, snapshot, true); err != nil {
-			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cleanup desk %s: %w", deskID, err))
+		removeDeskErr := s.removeDeskCascade(ctx, snapshot, true)
+		if removeDeskErr != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cleanup desk %s: %w", deskID, removeDeskErr))
 			failedDesks++
 
 			continue
@@ -563,8 +602,9 @@ func (s *Service) cleanupExpiredInMemory(ctx context.Context, now time.Time) err
 			continue
 		}
 
-		if err := s.removeDeskCascade(ctx, snapshot, true); err != nil {
-			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cleanup expired desk %s: %w", deskID, err))
+		removeDeskErr := s.removeDeskCascade(ctx, snapshot, true)
+		if removeDeskErr != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cleanup expired desk %s: %w", deskID, removeDeskErr))
 		}
 	}
 

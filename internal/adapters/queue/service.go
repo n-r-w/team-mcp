@@ -97,7 +97,7 @@ func (s *Service) AppendMessage(_ context.Context, topicID string, header domain
 }
 
 // RemoveMessage removes message header from topic list.
-func (s *Service) RemoveMessage(_ context.Context, topicID string, messageID string) error {
+func (s *Service) RemoveMessage(_ context.Context, topicID, messageID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/team-mcp/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/n-r-w/team-mcp/internal/domain"
 )
 
 var slogTestMu sync.Mutex
@@ -177,6 +178,48 @@ func TestTopicCreateSuccess(t *testing.T) {
 	require.Equal(t, "topic-1", result.TopicID)
 }
 
+// TestTopicListNotFound verifies topic_list preserves not_found semantics for missing desks.
+func TestTopicListNotFound(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	runRegistry := NewMockIRunRegistry(controller)
+	deskStore := NewMockIDeskStore(controller)
+	headerQueue := NewMockIHeaderQueue(controller)
+
+	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+
+	ctx := t.Context()
+	runRegistry.EXPECT().DeskExists(ctx, "desk-1").Return(false, nil)
+
+	result, err := service.TopicList(ctx, domain.TopicListRequest{DeskID: "desk-1"})
+	require.NoError(t, err)
+	require.Equal(t, domain.BusinessStatusNotFound, result.Status)
+	require.Nil(t, result.Topics)
+}
+
+// TestTopicListReturnsEmptySliceWhenHeaderQueueMissing verifies topic_list keeps ok status with empty slice when order state is absent.
+func TestTopicListReturnsEmptySliceWhenHeaderQueueMissing(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	runRegistry := NewMockIRunRegistry(controller)
+	deskStore := NewMockIDeskStore(controller)
+	headerQueue := NewMockIHeaderQueue(controller)
+
+	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+
+	ctx := t.Context()
+	runRegistry.EXPECT().DeskExists(ctx, "desk-1").Return(true, nil)
+	headerQueue.EXPECT().ListTopics(ctx, "desk-1").Return(nil, false, nil)
+
+	result, err := service.TopicList(ctx, domain.TopicListRequest{DeskID: "desk-1"})
+	require.NoError(t, err)
+	require.Equal(t, domain.BusinessStatusOK, result.Status)
+	require.NotNil(t, result.Topics)
+	require.Empty(t, result.Topics)
+}
+
 // TestMessageCreateDuplicateTitle verifies duplicate normalized title maps to business duplicate_title payload.
 func TestMessageCreateDuplicateTitle(t *testing.T) {
 	t.Parallel()
@@ -197,6 +240,48 @@ func TestMessageCreateDuplicateTitleLogsOutcome(t *testing.T) {
 	require.Contains(t, logs, `"event":"message_create"`)
 	require.Contains(t, logs, `"status":"duplicate_title"`)
 	require.Contains(t, logs, `"topic_id":"topic-1"`)
+}
+
+// TestMessageListNotFound verifies message_list preserves not_found semantics for missing topics.
+func TestMessageListNotFound(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	runRegistry := NewMockIRunRegistry(controller)
+	deskStore := NewMockIDeskStore(controller)
+	headerQueue := NewMockIHeaderQueue(controller)
+
+	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+
+	ctx := t.Context()
+	runRegistry.EXPECT().TopicExists(ctx, "topic-1").Return(false, nil)
+
+	result, err := service.MessageList(ctx, domain.MessageListRequest{TopicID: "topic-1"})
+	require.NoError(t, err)
+	require.Equal(t, domain.BusinessStatusNotFound, result.Status)
+	require.Nil(t, result.Messages)
+}
+
+// TestMessageListReturnsEmptySliceWhenHeaderQueueMissing verifies message_list keeps ok status with empty slice when order state is absent.
+func TestMessageListReturnsEmptySliceWhenHeaderQueueMissing(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	runRegistry := NewMockIRunRegistry(controller)
+	deskStore := NewMockIDeskStore(controller)
+	headerQueue := NewMockIHeaderQueue(controller)
+
+	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+
+	ctx := t.Context()
+	runRegistry.EXPECT().TopicExists(ctx, "topic-1").Return(true, nil)
+	headerQueue.EXPECT().ListMessages(ctx, "topic-1").Return(nil, false, nil)
+
+	result, err := service.MessageList(ctx, domain.MessageListRequest{TopicID: "topic-1"})
+	require.NoError(t, err)
+	require.Equal(t, domain.BusinessStatusOK, result.Status)
+	require.NotNil(t, result.Messages)
+	require.Empty(t, result.Messages)
 }
 
 func runMessageCreateDuplicateTitleScenario(t *testing.T, captureLogs bool) (domain.MessageCreateResult, string, error) {

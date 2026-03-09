@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/team-mcp/internal/domain"
 	"github.com/stretchr/testify/require"
+
+	"github.com/n-r-w/team-mcp/internal/domain"
 )
 
 // TestCreateDeskCapacityExceeded verifies active desk capacity bound enforcement.

@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/team-mcp/internal/config"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/n-r-w/team-mcp/internal/config"
 )
 
 // serviceSuite validates startup wiring and logger-config fail-fast behavior.

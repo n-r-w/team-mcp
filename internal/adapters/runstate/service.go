@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/n-r-w/team-mcp/internal/domain"
 	"github.com/n-r-w/team-mcp/internal/usecase"
 )

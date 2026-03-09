@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/n-r-w/team-mcp/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/n-r-w/team-mcp/internal/domain"
 )
 
 const testServerVersion = "test-version"
