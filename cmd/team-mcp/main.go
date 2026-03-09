@@ -48,8 +48,9 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := application.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		return err
+	runErr := application.Run(ctx)
+	if runErr != nil && !errors.Is(runErr, context.Canceled) {
+		return runErr
 	}
 
 	return nil

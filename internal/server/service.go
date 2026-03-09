@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/n-r-w/team-mcp/internal/domain"
 )
 
@@ -313,7 +314,7 @@ func (s *Service) messageGetTool(
 }
 
 // validateRequiredID validates required identifier input.
-func validateRequiredID(field string, value string) error {
+func validateRequiredID(field, value string) error {
 	if value == "" {
 		return fmt.Errorf("%s is required", field)
 	}

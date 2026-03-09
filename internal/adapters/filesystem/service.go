@@ -75,7 +75,7 @@ func (s *Service) EnsureDesk(_ context.Context, deskID string, createdAt time.Ti
 }
 
 // PersistMessage stores payload under desk directory using provided message ID.
-func (s *Service) PersistMessage(_ context.Context, deskID string, messageID string, payload string) error {
+func (s *Service) PersistMessage(_ context.Context, deskID, messageID, payload string) error {
 	if err := validateLocalID("desk ID", deskID); err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func (s *Service) PersistMessage(_ context.Context, deskID string, messageID str
 }
 
 // ResolveMessage loads message payload by desk and message IDs.
-func (s *Service) ResolveMessage(_ context.Context, deskID string, messageID string) (string, error) {
+func (s *Service) ResolveMessage(_ context.Context, deskID, messageID string) (string, error) {
 	if err := validateLocalID("desk ID", deskID); err != nil {
 		return "", err
 	}
@@ -144,7 +144,7 @@ func (s *Service) ResolveMessage(_ context.Context, deskID string, messageID str
 }
 
 // DeleteMessage removes payload file by desk and message IDs.
-func (s *Service) DeleteMessage(_ context.Context, deskID string, messageID string) error {
+func (s *Service) DeleteMessage(_ context.Context, deskID, messageID string) error {
 	if err := validateLocalID("desk ID", deskID); err != nil {
 		return err
 	}
@@ -202,9 +202,9 @@ func (s *Service) CollectExpiredDeskIDs(_ context.Context, now time.Time, ttl ti
 
 		var metaPayload []byte
 		if readErr := s.withOpenedRoot(func(root *os.Root) error {
-			payload, err := root.ReadFile(metaFile)
-			if err != nil {
-				return err
+			payload, readMetaErr := root.ReadFile(metaFile)
+			if readMetaErr != nil {
+				return readMetaErr
 			}
 
 			metaPayload = payload
@@ -244,7 +244,7 @@ func (s *Service) CollectExpiredDeskIDs(_ context.Context, now time.Time, ttl ti
 }
 
 // validateLocalID verifies required non-empty path-local IDs for secure filesystem paths.
-func validateLocalID(field string, value string) error {
+func validateLocalID(field, value string) error {
 	trimmedValue := strings.TrimSpace(value)
 	if trimmedValue == "" {
 		return fmt.Errorf("%s is empty", field)

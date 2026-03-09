@@ -3,8 +3,9 @@ package queue
 import (
 	"testing"
 
-	"github.com/n-r-w/team-mcp/internal/domain"
 	"github.com/stretchr/testify/require"
+
+	"github.com/n-r-w/team-mcp/internal/domain"
 )
 
 // TestTopicOrdering verifies topic headers preserve insertion order.

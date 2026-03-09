@@ -14,6 +14,6 @@ func (e validationError) Error() string {
 }
 
 // newValidationError creates structured validation errors.
-func newValidationError(field string, details string) error {
+func newValidationError(field, details string) error {
 	return validationError{field: field, details: details}
 }
