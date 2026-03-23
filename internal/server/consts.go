@@ -29,10 +29,11 @@ CRITICAL RULES:
 7. Before creating a message, you MUST to think:
 	- Will it contain enough information for subagents to do their job? If not - add more.
 	- Does it contain: references to knowledge that only you have in context and subagents don't; references to identifiers without specifying which document or file they relate to? If yes - replace with specific knowledge or links to documents/files.
-8. CRITICAL: NEVER run subagents in parallel, that depend on each other. For example:
-    - A developer creates a feature, and a tester needs to test it.
-	- If you run these subagents in parallel, the tester will start testing before the developer creates the feature, leading to errors.
-	- REMEMBER: Subagents CANNOT WAIT for each other's results!
+8. CRITICAL: NEVER run subagents in parallel, that depend on each other. REMEMBER: Subagents CANNOT WAIT for each other's results! For example:
+    - A developer creates a feature, and a tester needs to test it. If you run these subagents in parallel, the tester will start testing before the developer creates the feature, leading to errors.
+	- You need analyze codebase and then refactor it:
+		- Execute several INDEPENDENT analysis subagents in parallel.
+		- Subagent that will create the refactoring plan should be executed AFTER the analytical subagents. If you run it in parallel, it will not wait for the results of the analytical subagents and will create a plan based on incomplete information.
 
 SUBAGENT PROMPT TEMPLATE FOR CONSISTENT COMMUNICATION. MUST include in EACH subagent's prompt AS-IS:
 "Collaboration protocol:
