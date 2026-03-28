@@ -10,12 +10,11 @@ The agent orchestrator defines a channel-based interaction model, and sub-agents
 
 ## MCP Tools
 1. **desk_create:** Creates a collaboration desk. 
-2. **desk_remove:** Removes a desk and all linked topics/messages from memory and disk. 
-3. **topic_create:** Creates a topic in a desk.
-4. **topic_list:** Lists ordered topic headers for a desk.
-5. **message_create:** Creates a message in a topic.
-6. **message_list:** Lists ordered message headers for a topic.
-7. **message_get:** Retrieves the full message payload.
+2. **topic_create:** Creates a topic in a desk.
+3. **topic_list:** Lists ordered topic headers for a desk.
+4. **message_create:** Creates a message in a topic.
+5. **message_list:** Lists ordered message headers for a topic.
+6. **message_get:** Retrieves the full message payload.
 
 Full schema:
 - `internal/server/consts.go`
@@ -26,11 +25,9 @@ Full schema:
 2. `internal/appinit`: Composition root.
 3. `internal/server`: MCP tool layer.
 4. `internal/usecase`: Core orchestration.
-5. `internal/adapters/runstate`: In-memory run state management.
-6. `internal/adapters/queue`: In-memory queue management.
-7. `internal/adapters/filesystem`: Message persistence.
-8. `internal/domain/coordination`: Shared domain objects.
-9. `internal/config`: Configuration management.
+5. `internal/adapters/filesystem`: Authoritative board persistence.
+6. `internal/domain`: Shared domain objects.
+7. `internal/config`: Configuration management.
 
 ## Tech stack
 1. go 1.26
@@ -62,9 +59,13 @@ Full schema:
 3. ALL DTOs MUST be not exported.
 4. Use `task lint` and `task test` to check code before completing changes.
 5. Run `task fix` after making batch changes to improve code quality.
+6. Use cross-platform file operations ONLY.
 
 ## Testing rules
 1. Use `t.Context()` instead of `context.Background()`
 2. Use `go.uber.org/mock` for mocks. Custom mocks are FORBIDDEN. Use `//go:generate` directives in interface files to generate mocks as needed.
 3. Use `github.com/stretchr/testify`
 4. Use `testify/suite`
+
+## Documentation
+Disk Storage Layout: `docs/disk-storage-layout.md`

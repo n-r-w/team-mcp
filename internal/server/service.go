@@ -47,10 +47,6 @@ func applyDefaultMetadata(options *Options) {
 		options.ToolDescriptions.DeskCreate = toolDeskCreateDesc
 	}
 
-	if strings.TrimSpace(options.ToolDescriptions.DeskRemove) == "" {
-		options.ToolDescriptions.DeskRemove = toolDeskRemoveDesc
-	}
-
 	if strings.TrimSpace(options.ToolDescriptions.TopicCreate) == "" {
 		options.ToolDescriptions.TopicCreate = toolTopicCreateDesc
 	}
@@ -101,10 +97,6 @@ func (s *Service) register(server *mcp.Server) {
 		InputSchema: emptyObjectInputSchema(),
 	}, s.deskCreateTool)
 	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
-		Name:        toolDeskRemoveName,
-		Description: s.options.ToolDescriptions.DeskRemove,
-	}, s.deskRemoveTool)
-	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
 		Name:        toolTopicCreateName,
 		Description: s.options.ToolDescriptions.TopicCreate,
 	}, s.topicCreateTool)
@@ -138,25 +130,6 @@ func (s *Service) deskCreateTool(
 	}
 
 	return nil, deskCreateOutput{DeskID: result.DeskID}, nil
-}
-
-// deskRemoveTool handles desk removal with strict synchronous cleanup semantics.
-func (s *Service) deskRemoveTool(
-	ctx context.Context,
-	_ *mcp.CallToolRequest,
-	input deskRemoveInput,
-) (*mcp.CallToolResult, deskRemoveOutput, error) {
-	deskID := strings.TrimSpace(input.DeskID)
-	if err := validateRequiredID("desk_id", deskID); err != nil {
-		return nil, deskRemoveOutput{}, err
-	}
-
-	result, err := s.options.CoordinationUseCase.DeskRemove(ctx, domain.DeskRemoveRequest{DeskID: deskID})
-	if err != nil {
-		return nil, deskRemoveOutput{}, fmt.Errorf("desk_remove failed: %w", err)
-	}
-
-	return nil, deskRemoveOutput{Status: string(result.Status)}, nil
 }
 
 // topicCreateTool handles topic creation and idempotent resolution.

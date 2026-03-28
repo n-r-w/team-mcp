@@ -18,11 +18,13 @@ import (
 
 var slogTestMu sync.Mutex
 
+// lockedBuffer serializes concurrent slog writes so log assertions stay deterministic.
 type lockedBuffer struct {
 	mu   sync.Mutex
 	data bytes.Buffer
 }
 
+// Write keeps concurrent slog output ordered for tests that inspect JSON logs.
 func (b *lockedBuffer) Write(payload []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -30,6 +32,7 @@ func (b *lockedBuffer) Write(payload []byte) (int, error) {
 	return b.data.Write(payload)
 }
 
+// String returns the buffered log payload after all writes complete.
 func (b *lockedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -37,6 +40,7 @@ func (b *lockedBuffer) String() string {
 	return b.data.String()
 }
 
+// captureSlogJSON redirects the default logger to one in-memory JSON buffer for assertions.
 func captureSlogJSON(t *testing.T) (*lockedBuffer, func()) {
 	t.Helper()
 
@@ -58,123 +62,54 @@ func captureSlogJSON(t *testing.T) (*lockedBuffer, func()) {
 	return output, restore
 }
 
-// TestDeskCreateSuccess verifies desk_create creates in-memory and persistent desk state.
+// TestDeskCreateSuccess verifies desk_create delegates to the authoritative board store.
 func TestDeskCreateSuccess(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
-	runRegistry.EXPECT().CreateDesk(ctx, gomock.Any()).Return("desk-1", nil)
-	deskStore.EXPECT().EnsureDesk(ctx, "desk-1", gomock.Any()).Return(nil)
+	boardStore.EXPECT().CreateDesk(ctx, gomock.Any()).Return("desk-1", nil)
 
 	result, err := service.DeskCreate(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "desk-1", result.DeskID)
 }
 
-// TestDeskCreateEnsureDeskFailureIncludesRollbackError verifies rollback errors are returned with primary ensure-desk failure.
-func TestDeskCreateEnsureDeskFailureIncludesRollbackError(t *testing.T) {
+// TestDeskCreateStoreFailureWrapsError verifies desk_create returns authoritative store errors with context.
+func TestDeskCreateStoreFailureWrapsError(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
-	runRegistry.EXPECT().CreateDesk(ctx, gomock.Any()).Return("desk-1", nil)
-	deskStore.EXPECT().EnsureDesk(ctx, "desk-1", gomock.Any()).Return(errors.New("ensure failed"))
-	runRegistry.EXPECT().DeleteDesk(ctx, "desk-1").Return(errors.New("rollback failed"))
+	boardStore.EXPECT().CreateDesk(ctx, gomock.Any()).Return("", errors.New("create failed"))
 
 	_, err := service.DeskCreate(ctx)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "initialize desk storage")
-	require.ErrorContains(t, err, "rollback failed")
+	require.ErrorContains(t, err, "create desk")
+	require.ErrorContains(t, err, "create failed")
 }
 
-// TestDeskRemoveNotFound verifies desk_remove maps missing desk to business not_found.
-func TestDeskRemoveNotFound(t *testing.T) {
-	t.Parallel()
-
-	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
-
-	ctx := t.Context()
-	runRegistry.EXPECT().GetDeskSnapshot(ctx, "desk-1").Return(
-		domain.DeskSnapshot{DeskID: "", CreatedAt: time.Time{}, TopicIDs: nil, MessageIDs: nil},
-		false,
-		nil,
-	)
-
-	result, err := service.DeskRemove(ctx, domain.DeskRemoveRequest{DeskID: "desk-1"})
-	require.NoError(t, err)
-	require.Equal(t, domain.BusinessStatusNotFound, result.Status)
-}
-
-// TestDeskRemoveSuccessLogsStatus verifies successful desk_remove emits status log.
-func TestDeskRemoveSuccessLogsStatus(t *testing.T) {
-	t.Parallel()
-
-	logOutput, restoreLogger := captureSlogJSON(t)
-	t.Cleanup(restoreLogger)
-
-	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
-
-	ctx := t.Context()
-	runRegistry.EXPECT().GetDeskSnapshot(ctx, "desk-1").Return(
-		domain.DeskSnapshot{DeskID: "desk-1", CreatedAt: time.Time{}, TopicIDs: []string{"topic-1"}, MessageIDs: nil},
-		true,
-		nil,
-	)
-	headerQueue.EXPECT().DeleteDesk(ctx, "desk-1", []string{"topic-1"}).Return(nil)
-	runRegistry.EXPECT().DeleteDesk(ctx, "desk-1").Return(nil)
-	deskStore.EXPECT().DeleteDesk(ctx, "desk-1").Return(nil)
-
-	result, err := service.DeskRemove(ctx, domain.DeskRemoveRequest{DeskID: "desk-1"})
-	require.NoError(t, err)
-	require.Equal(t, domain.BusinessStatusOK, result.Status)
-
-	logs := logOutput.String()
-	require.Contains(t, logs, `"event":"desk_remove"`)
-	require.Contains(t, logs, `"status":"ok"`)
-	require.Contains(t, logs, `"desk_id":"desk-1"`)
-}
-
-// TestTopicCreateSuccess verifies topic_create ensures deterministic topic ordering state.
+// TestTopicCreateSuccess verifies topic_create delegates to the authoritative board store.
 func TestTopicCreateSuccess(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
 	header := domain.TopicHeader{TopicID: "topic-1", Title: "Topic"}
-	runRegistry.EXPECT().CreateTopic(ctx, "desk-1", "Topic").Return(header, domain.BusinessStatusOK, true, nil)
-	headerQueue.EXPECT().EnsureTopic(ctx, "desk-1", header).Return(nil)
+	boardStore.EXPECT().CreateTopic(ctx, "desk-1", "Topic").Return(header, domain.BusinessStatusOK, true, nil)
 
 	result, err := service.TopicCreate(ctx, domain.TopicCreateRequest{DeskID: "desk-1", Title: "Topic"})
 	require.NoError(t, err)
+	require.Equal(t, domain.BusinessStatusOK, result.Status)
 	require.Equal(t, "topic-1", result.TopicID)
 }
 
@@ -183,14 +118,11 @@ func TestTopicListNotFound(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
-	runRegistry.EXPECT().DeskExists(ctx, "desk-1").Return(false, nil)
+	boardStore.EXPECT().ListTopics(ctx, "desk-1").Return(nil, false, nil)
 
 	result, err := service.TopicList(ctx, domain.TopicListRequest{DeskID: "desk-1"})
 	require.NoError(t, err)
@@ -198,20 +130,16 @@ func TestTopicListNotFound(t *testing.T) {
 	require.Nil(t, result.Topics)
 }
 
-// TestTopicListReturnsEmptySliceWhenHeaderQueueMissing verifies topic_list keeps ok status with empty slice when order state is absent.
-func TestTopicListReturnsEmptySliceWhenHeaderQueueMissing(t *testing.T) {
+// TestTopicListReturnsEmptySlice verifies topic_list preserves empty-slice semantics for an existing empty desk.
+func TestTopicListReturnsEmptySlice(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
-	runRegistry.EXPECT().DeskExists(ctx, "desk-1").Return(true, nil)
-	headerQueue.EXPECT().ListTopics(ctx, "desk-1").Return(nil, false, nil)
+	boardStore.EXPECT().ListTopics(ctx, "desk-1").Return([]domain.TopicHeader{}, true, nil)
 
 	result, err := service.TopicList(ctx, domain.TopicListRequest{DeskID: "desk-1"})
 	require.NoError(t, err)
@@ -220,26 +148,39 @@ func TestTopicListReturnsEmptySliceWhenHeaderQueueMissing(t *testing.T) {
 	require.Empty(t, result.Topics)
 }
 
-// TestMessageCreateDuplicateTitle verifies duplicate normalized title maps to business duplicate_title payload.
-func TestMessageCreateDuplicateTitle(t *testing.T) {
-	t.Parallel()
-
-	result, _, err := runMessageCreateDuplicateTitleScenario(t, false)
-	require.NoError(t, err)
-	require.Equal(t, domain.BusinessStatusDuplicateTitle, result.Status)
-	require.Equal(t, "msg-existing", result.ExistingMessageID)
-}
-
-// TestMessageCreateDuplicateTitleLogsOutcome verifies duplicate-title business outcome is explicitly logged.
+// TestMessageCreateDuplicateTitleLogsOutcome verifies duplicate-title business outcomes stay visible in logs.
 func TestMessageCreateDuplicateTitleLogsOutcome(t *testing.T) {
 	t.Parallel()
 
-	result, logs, err := runMessageCreateDuplicateTitleScenario(t, true)
+	result, logs, err := runMessageCreateDuplicateTitleScenario(t)
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusDuplicateTitle, result.Status)
+	require.Equal(t, "msg-existing", result.ExistingMessageID)
 	require.Contains(t, logs, `"event":"message_create"`)
 	require.Contains(t, logs, `"status":"duplicate_title"`)
 	require.Contains(t, logs, `"topic_id":"topic-1"`)
+}
+
+// TestMessageCreateStoreFailureWrapsError verifies message_create surfaces authoritative store failures as tool errors.
+func TestMessageCreateStoreFailureWrapsError(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+
+	ctx := t.Context()
+	boardStore.EXPECT().CreateMessage(ctx, "topic-1", "Title", "title", "Body").Return(
+		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		domain.BusinessStatus(""),
+		"",
+		errors.New("store failed"),
+	)
+
+	_, err := service.MessageCreate(ctx, domain.MessageCreateRequest{TopicID: "topic-1", Title: "Title", Content: "Body"})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "create message")
+	require.ErrorContains(t, err, "store failed")
 }
 
 // TestMessageListNotFound verifies message_list preserves not_found semantics for missing topics.
@@ -247,14 +188,11 @@ func TestMessageListNotFound(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
-	runRegistry.EXPECT().TopicExists(ctx, "topic-1").Return(false, nil)
+	boardStore.EXPECT().ListMessages(ctx, "topic-1").Return(nil, false, nil)
 
 	result, err := service.MessageList(ctx, domain.MessageListRequest{TopicID: "topic-1"})
 	require.NoError(t, err)
@@ -262,20 +200,16 @@ func TestMessageListNotFound(t *testing.T) {
 	require.Nil(t, result.Messages)
 }
 
-// TestMessageListReturnsEmptySliceWhenHeaderQueueMissing verifies message_list keeps ok status with empty slice when order state is absent.
-func TestMessageListReturnsEmptySliceWhenHeaderQueueMissing(t *testing.T) {
+// TestMessageListReturnsEmptySlice verifies message_list preserves empty-slice semantics for an existing empty topic.
+func TestMessageListReturnsEmptySlice(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
-	runRegistry.EXPECT().TopicExists(ctx, "topic-1").Return(true, nil)
-	headerQueue.EXPECT().ListMessages(ctx, "topic-1").Return(nil, false, nil)
+	boardStore.EXPECT().ListMessages(ctx, "topic-1").Return([]domain.MessageHeader{}, true, nil)
 
 	result, err := service.MessageList(ctx, domain.MessageListRequest{TopicID: "topic-1"})
 	require.NoError(t, err)
@@ -284,131 +218,18 @@ func TestMessageListReturnsEmptySliceWhenHeaderQueueMissing(t *testing.T) {
 	require.Empty(t, result.Messages)
 }
 
-func runMessageCreateDuplicateTitleScenario(t *testing.T, captureLogs bool) (domain.MessageCreateResult, string, error) {
-	t.Helper()
-
-	logs := ""
-	var logOutput *lockedBuffer
-	if captureLogs {
-		capturedOutput, restoreLogger := captureSlogJSON(t)
-		t.Cleanup(restoreLogger)
-		logOutput = capturedOutput
-	}
-
-	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
-
-	ctx := t.Context()
-	runRegistry.EXPECT().CreateMessage(
-		ctx,
-		"topic-1",
-		"Title",
-		"title",
-	).Return(
-		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
-		domain.BusinessStatusDuplicateTitle,
-		"msg-existing",
-		nil,
-	)
-
-	result, err := service.MessageCreate(ctx, domain.MessageCreateRequest{TopicID: "topic-1", Title: "Title", Content: "Body"})
-	if logOutput != nil {
-		logs = logOutput.String()
-	}
-
-	return result, logs, err
-}
-
-// TestMessageCreatePersistFailureRollsBack verifies metadata rollback when payload persistence fails.
-func TestMessageCreatePersistFailureRollsBack(t *testing.T) {
-	t.Parallel()
-
-	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
-
-	ctx := t.Context()
-	meta := domain.MessageMeta{MessageID: "msg-1", TopicID: "topic-1", DeskID: "desk-1", Title: "Title"}
-	runRegistry.EXPECT().CreateMessage(ctx, "topic-1", "Title", "title").Return(meta, domain.BusinessStatusOK, "", nil)
-	deskStore.EXPECT().PersistMessage(ctx, "desk-1", "msg-1", "Body").Return(errors.New("persist failed"))
-	runRegistry.EXPECT().DeleteMessage(ctx, "msg-1").Return(nil)
-
-	_, err := service.MessageCreate(ctx, domain.MessageCreateRequest{TopicID: "topic-1", Title: "Title", Content: "Body"})
-	require.Error(t, err)
-	require.ErrorContains(t, err, "persist message payload")
-}
-
-// TestMessageCreatePersistFailureIncludesRollbackError verifies persist failure returns rollback metadata error when rollback fails.
-func TestMessageCreatePersistFailureIncludesRollbackError(t *testing.T) {
-	t.Parallel()
-
-	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
-
-	ctx := t.Context()
-	meta := domain.MessageMeta{MessageID: "msg-1", TopicID: "topic-1", DeskID: "desk-1", Title: "Title"}
-	runRegistry.EXPECT().CreateMessage(ctx, "topic-1", "Title", "title").Return(meta, domain.BusinessStatusOK, "", nil)
-	deskStore.EXPECT().PersistMessage(ctx, "desk-1", "msg-1", "Body").Return(errors.New("persist failed"))
-	runRegistry.EXPECT().DeleteMessage(ctx, "msg-1").Return(errors.New("rollback failed"))
-
-	_, err := service.MessageCreate(ctx, domain.MessageCreateRequest{TopicID: "topic-1", Title: "Title", Content: "Body"})
-	require.Error(t, err)
-	require.ErrorContains(t, err, "persist message payload")
-	require.ErrorContains(t, err, "rollback failed")
-}
-
-// TestMessageCreateAppendFailureIncludesRollbackErrors verifies append failure preserves joined rollback errors.
-func TestMessageCreateAppendFailureIncludesRollbackErrors(t *testing.T) {
-	t.Parallel()
-
-	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
-
-	ctx := t.Context()
-	meta := domain.MessageMeta{MessageID: "msg-1", TopicID: "topic-1", DeskID: "desk-1", Title: "Title"}
-	runRegistry.EXPECT().CreateMessage(ctx, "topic-1", "Title", "title").Return(meta, domain.BusinessStatusOK, "", nil)
-	deskStore.EXPECT().PersistMessage(ctx, "desk-1", "msg-1", "Body").Return(nil)
-	headerQueue.EXPECT().AppendMessage(ctx, "topic-1", domain.MessageHeader{MessageID: "msg-1", Title: "Title"}).
-		Return(errors.New("append failed"))
-	runRegistry.EXPECT().DeleteMessage(ctx, "msg-1").Return(errors.New("rollback metadata failed"))
-	deskStore.EXPECT().DeleteMessage(ctx, "desk-1", "msg-1").Return(errors.New("rollback payload failed"))
-
-	_, err := service.MessageCreate(ctx, domain.MessageCreateRequest{TopicID: "topic-1", Title: "Title", Content: "Body"})
-	require.Error(t, err)
-	require.ErrorContains(t, err, "append message header")
-	require.ErrorContains(t, err, "rollback metadata failed")
-	require.ErrorContains(t, err, "rollback payload failed")
-}
-
 // TestMessageGetNotFound verifies message_get returns not_found business status for missing message IDs.
 func TestMessageGetNotFound(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
-	runRegistry.EXPECT().GetMessageMeta(ctx, "msg-1").Return(
+	boardStore.EXPECT().GetMessage(ctx, "msg-1").Return(
 		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		"",
 		false,
 		nil,
 	)
@@ -418,20 +239,17 @@ func TestMessageGetNotFound(t *testing.T) {
 	require.Equal(t, domain.BusinessStatusNotFound, result.Status)
 }
 
-// TestRunLifecycleCollectorStartupDiskCleanup verifies startup cleanup scans and removes expired desk directories.
-func TestRunLifecycleCollectorStartupDiskCleanup(t *testing.T) {
+// TestRunLifecycleCollectorStartupCleanup verifies startup cleanup scans and removes expired desks from the authoritative store.
+func TestRunLifecycleCollectorStartupCleanup(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx, cancel := context.WithCancel(t.Context())
-	deskStore.EXPECT().CollectExpiredDeskIDs(gomock.Any(), gomock.Any(), time.Hour).Return([]string{"desk-expired"}, nil)
-	deskStore.EXPECT().DeleteDesk(gomock.Any(), "desk-expired").DoAndReturn(func(context.Context, string) error {
+	boardStore.EXPECT().CollectExpiredDeskIDs(gomock.Any(), gomock.Any(), time.Hour).Return([]string{"desk-expired"}, nil)
+	boardStore.EXPECT().DeleteDesk(gomock.Any(), "desk-expired").DoAndReturn(func(context.Context, string) error {
 		cancel()
 
 		return nil
@@ -446,11 +264,8 @@ func TestRunLifecycleCollectorRejectsNonPositiveInterval(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	err := service.RunLifecycleCollector(t.Context(), 0)
 	require.ErrorContains(t, err, "collect interval must be greater than 0")
@@ -464,17 +279,17 @@ func TestRunLifecycleCollectorLogsSuccessResults(t *testing.T) {
 	t.Cleanup(restoreLogger)
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx, cancel := context.WithCancel(t.Context())
-	deskStore.EXPECT().CollectExpiredDeskIDs(gomock.Any(), gomock.Any(), time.Hour).Return([]string{}, nil).AnyTimes()
-	runRegistry.EXPECT().CollectExpiredDeskIDs(gomock.Any(), gomock.Any(), time.Hour).DoAndReturn(
+	collectCallCount := 0
+	boardStore.EXPECT().CollectExpiredDeskIDs(gomock.Any(), gomock.Any(), time.Hour).DoAndReturn(
 		func(context.Context, time.Time, time.Duration) ([]string, error) {
-			cancel()
+			collectCallCount++
+			if collectCallCount >= 2 {
+				cancel()
+			}
 
 			return []string{}, nil
 		},
@@ -502,57 +317,32 @@ func TestRunLifecycleCollectorLogsSuccessResults(t *testing.T) {
 	require.GreaterOrEqual(t, strings.Count(logs, `"result":"ok"`), 2)
 }
 
-// TestCleanupAllRunsRemovesActiveDesks verifies shutdown cleanup removes all known active desks.
-func TestCleanupAllRunsRemovesActiveDesks(t *testing.T) {
-	t.Parallel()
-
-	_, err := runCleanupAllRunsSuccessScenario(t, false)
-	require.NoError(t, err)
-}
-
-// TestCleanupAllRunsLogsSummary verifies shutdown cleanup summary result is logged.
-func TestCleanupAllRunsLogsSummary(t *testing.T) {
-	t.Parallel()
-
-	logs, err := runCleanupAllRunsSuccessScenario(t, true)
-	require.NoError(t, err)
-	require.Contains(t, logs, `"event":"shutdown_cleanup"`)
-	require.Contains(t, logs, `"result":"ok"`)
-}
-
-func runCleanupAllRunsSuccessScenario(t *testing.T, captureLogs bool) (string, error) {
+// runMessageCreateDuplicateTitleScenario exercises the duplicate-title branch while capturing logs.
+func runMessageCreateDuplicateTitleScenario(t *testing.T) (domain.MessageCreateResult, string, error) {
 	t.Helper()
 
-	logs := ""
-	var logOutput *lockedBuffer
-	if captureLogs {
-		capturedOutput, restoreLogger := captureSlogJSON(t)
-		t.Cleanup(restoreLogger)
-		logOutput = capturedOutput
-	}
+	logOutput, restoreLogger := captureSlogJSON(t)
+	t.Cleanup(restoreLogger)
 
 	controller := gomock.NewController(t)
-	runRegistry := NewMockIRunRegistry(controller)
-	deskStore := NewMockIDeskStore(controller)
-	headerQueue := NewMockIHeaderQueue(controller)
-
-	service := New(runRegistry, deskStore, headerQueue, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	boardStore := NewMockIBoardStore(controller)
+	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
-	runRegistry.EXPECT().ListDeskIDs(ctx).Return([]string{"desk-1"}, nil)
-	runRegistry.EXPECT().GetDeskSnapshot(ctx, "desk-1").Return(
-		domain.DeskSnapshot{DeskID: "desk-1", CreatedAt: time.Time{}, TopicIDs: []string{"topic-1"}, MessageIDs: nil},
-		true,
+	boardStore.EXPECT().CreateMessage(
+		ctx,
+		"topic-1",
+		"Title",
+		"title",
+		"Body",
+	).Return(
+		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		domain.BusinessStatusDuplicateTitle,
+		"msg-existing",
 		nil,
 	)
-	headerQueue.EXPECT().DeleteDesk(ctx, "desk-1", []string{"topic-1"}).Return(nil)
-	runRegistry.EXPECT().DeleteDesk(ctx, "desk-1").Return(nil)
-	deskStore.EXPECT().DeleteDesk(ctx, "desk-1").Return(nil)
 
-	err := service.CleanupAllRuns(ctx)
-	if logOutput != nil {
-		logs = logOutput.String()
-	}
+	result, err := service.MessageCreate(ctx, domain.MessageCreateRequest{TopicID: "topic-1", Title: "Title", Content: "Body"})
 
-	return logs, err
+	return result, logOutput.String(), err
 }

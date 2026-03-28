@@ -22,7 +22,6 @@ func newTestOptions(coordination ICoordination) Options {
 		CoordinationUseCase: coordination,
 		ToolDescriptions: ToolDescriptions{
 			DeskCreate:    "",
-			DeskRemove:    "",
 			TopicCreate:   "",
 			TopicList:     "",
 			MessageCreate: "",
@@ -71,8 +70,8 @@ func TestRunErrorWrap(t *testing.T) {
 	require.ErrorIs(t, err, sentinelErr)
 }
 
-// TestNewRegistersSevenTools verifies constructor registers only target 7 tools.
-func TestNewRegistersSevenTools(t *testing.T) {
+// TestNewRegistersSixTools verifies constructor registers only the supported six tools.
+func TestNewRegistersSixTools(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
@@ -84,14 +83,14 @@ func TestNewRegistersSevenTools(t *testing.T) {
 
 	registeredTools, err := listRegisteredToolsModern(t, t.Context(), runtimeServer)
 	require.NoError(t, err)
-	require.Len(t, registeredTools, 7)
+	require.Len(t, registeredTools, 6)
 	require.Contains(t, registeredTools, toolDeskCreateName)
-	require.Contains(t, registeredTools, toolDeskRemoveName)
 	require.Contains(t, registeredTools, toolTopicCreateName)
 	require.Contains(t, registeredTools, toolTopicListName)
 	require.Contains(t, registeredTools, toolMessageCreateName)
 	require.Contains(t, registeredTools, toolMessageListName)
 	require.Contains(t, registeredTools, toolMessageGetName)
+	require.NotContains(t, registeredTools, "desk_remove")
 }
 
 // TestTopicCreateNotFound verifies topic_create maps business not_found status into output status.
@@ -160,7 +159,6 @@ func TestNewAppliesCustomDescriptions(t *testing.T) {
 		CoordinationUseCase: coordination,
 		ToolDescriptions: ToolDescriptions{
 			DeskCreate:    "custom desk_create",
-			DeskRemove:    "custom desk_remove",
 			TopicCreate:   "custom topic_create",
 			TopicList:     "custom topic_list",
 			MessageCreate: "custom message_create",
@@ -175,13 +173,14 @@ func TestNewAppliesCustomDescriptions(t *testing.T) {
 
 	registeredTools, err := listRegisteredToolsModern(t, t.Context(), runtimeServer)
 	require.NoError(t, err)
+	require.Len(t, registeredTools, 6)
 	require.Equal(t, "custom desk_create", registeredTools[toolDeskCreateName])
-	require.Equal(t, "custom desk_remove", registeredTools[toolDeskRemoveName])
 	require.Equal(t, "custom topic_create", registeredTools[toolTopicCreateName])
 	require.Equal(t, "custom topic_list", registeredTools[toolTopicListName])
 	require.Equal(t, "custom message_create", registeredTools[toolMessageCreateName])
 	require.Equal(t, "custom message_list", registeredTools[toolMessageListName])
 	require.Equal(t, "custom message_get", registeredTools[toolMessageGetName])
+	require.NotContains(t, registeredTools, "desk_remove")
 	require.Equal(t, "custom system prompt", service.options.SystemPrompt)
 }
 
@@ -198,13 +197,14 @@ func TestNewFallsBackToDefaultDescriptions(t *testing.T) {
 
 	registeredTools, err := listRegisteredToolsModern(t, t.Context(), runtimeServer)
 	require.NoError(t, err)
+	require.Len(t, registeredTools, 6)
 	require.Equal(t, toolDeskCreateDesc, registeredTools[toolDeskCreateName])
-	require.Equal(t, toolDeskRemoveDesc, registeredTools[toolDeskRemoveName])
 	require.Equal(t, toolTopicCreateDesc, registeredTools[toolTopicCreateName])
 	require.Equal(t, toolTopicListDesc, registeredTools[toolTopicListName])
 	require.Equal(t, toolMessageCreateDesc, registeredTools[toolMessageCreateName])
 	require.Equal(t, toolMessageListDesc, registeredTools[toolMessageListName])
 	require.Equal(t, toolMessageGetDesc, registeredTools[toolMessageGetName])
+	require.NotContains(t, registeredTools, "desk_remove")
 	require.Equal(t, systemPrompt, service.options.SystemPrompt)
 }
 

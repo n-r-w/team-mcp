@@ -12,7 +12,7 @@ HOW TO USE:
 2. Call desk_create to create a new desk and obtain its desk_id.
 3. Call topic_create to create topics within the desk for different discussion threads or coordination needs.
 4. Coordinate subagent's interactions through the shared desk.
-5. When the desk is no longer needed, call desk_remove to clean up resources.
+5. If you start a new task, create a new desk to avoid mixing communication.
 
 CRITICAL RULES:
 1. Collaboration desk is the MAIN communication channel for subagents.
@@ -22,34 +22,24 @@ CRITICAL RULES:
 	- GOOD: Main agent execute coding subagent and add to its prompt reference to the plan message in the desk.
 	   BAD: Main agent execute coding subagent and add to its prompt implementation instructions directly, without referencing the plan message in the desk.
 	   WHY BAD: Critical details will be lost during information transfer.
-4. Subagents DO NOT have access to tools desk_create and desk_remove. Only the main agent can create or remove desks.
-5. NEVER mention desk_create, desk_remove and topic_create in subagent prompts, they DO NOT KNOW about these tools.
+4. Subagents DO NOT have access to tools desk_create and topic_create. Only the main agent can create desks and topics.
+5. NEVER mention desk_create and topic_create in subagent prompts, they DO NOT KNOW about these tools.
 6. NEVER post on the desk rules, limitations, and other information that relates only to YOUR work (e.g. subagent management rules, your own limitations, etc.)
 	REMEMBER: desk is for communication between subagents, NOT FOR YOUR INTERNAL NEEDS!
 7. Before creating a message, you MUST to think:
 	- Will it contain enough information for subagents to do their job? If not - add more.
 	- Does it contain: references to knowledge that only you have in context and subagents don't; references to identifiers without specifying which document or file they relate to? If yes - replace with specific knowledge or links to documents/files.
-8. CRITICAL: NEVER run subagents in parallel, that depend on each other. REMEMBER: Subagents CANNOT WAIT for each other's results! For example:
-    - A developer creates a feature, and a tester needs to test it. If you run these subagents in parallel, the tester will start testing before the developer creates the feature, leading to errors.
-	- You need analyze codebase and then refactor it:
-		- Execute several INDEPENDENT analysis subagents in parallel.
-		- Subagent that will create the refactoring plan should be executed AFTER the analytical subagents. If you run it in parallel, it will not wait for the results of the analytical subagents and will create a plan based on incomplete information.
+8. CRITICAL: NEVER run subagents in parallel, that depend on each other messages. REMEMBER: Subagents CANNOT WAIT for each other's messages!
 
-SUBAGENT PROMPT TEMPLATE FOR CONSISTENT COMMUNICATION. MUST include in EACH subagent's prompt AS-IS:
+SUBAGENT PROMPT TEMPLATE. MUST include in EACH subagent's prompt AS-IS:
 "Collaboration protocol:
 - You have access to a shared collaboration desk with desk_id: {desk_id}. Use this desk to coordinate your job with other agents.
-- Your teammates: {List of subagents and their roles}.
 - Topics to use: {List of relevant topics IDs and their purposes}.
 - MUST read before start: {List of relevant message IDs}
-- MUST post: {What kind of messages to post, in which topics, and when.}
+- MUST post: {What kind of messages to post, in which topics, and when}
 - MUST save the results of your work as messages, instead of duplicating these results in your response. Include in response only:
 	- Reference to the messages in the desk with full results.
 	- Brief summary of your job: findings, conclusions, changes, etc."`
-
-	// toolDeskRemoveName is MCP method name for desk_remove operation.
-	toolDeskRemoveName = "desk_remove"
-	// toolDeskRemoveDesc explains synchronous cascade semantics for desk_remove.
-	toolDeskRemoveDesc = "Removes desk and all linked topics/messages from memory and disk. MUST be called to clean up resources when desk is no longer needed."
 
 	// toolTopicCreateName is MCP method name for topic_create operation.
 	toolTopicCreateName = "topic_create"

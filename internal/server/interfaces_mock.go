@@ -57,21 +57,6 @@ func (mr *MockICoordinationMockRecorder) DeskCreate(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeskCreate", reflect.TypeOf((*MockICoordination)(nil).DeskCreate), ctx)
 }
 
-// DeskRemove mocks base method.
-func (m *MockICoordination) DeskRemove(ctx context.Context, request domain.DeskRemoveRequest) (domain.DeskRemoveResult, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeskRemove", ctx, request)
-	ret0, _ := ret[0].(domain.DeskRemoveResult)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// DeskRemove indicates an expected call of DeskRemove.
-func (mr *MockICoordinationMockRecorder) DeskRemove(ctx, request any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeskRemove", reflect.TypeOf((*MockICoordination)(nil).DeskRemove), ctx, request)
-}
-
 // MessageCreate mocks base method.
 func (m *MockICoordination) MessageCreate(ctx context.Context, request domain.MessageCreateRequest) (domain.MessageCreateResult, error) {
 	m.ctrl.T.Helper()

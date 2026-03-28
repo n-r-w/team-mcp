@@ -1,3 +1,4 @@
+// Package appinit composes application dependencies and process lifecycle.
 package appinit
 
 import (
@@ -9,20 +10,24 @@ import (
 	"time"
 
 	"github.com/n-r-w/team-mcp/internal/adapters/filesystem"
-	"github.com/n-r-w/team-mcp/internal/adapters/queue"
-	"github.com/n-r-w/team-mcp/internal/adapters/runstate"
 	"github.com/n-r-w/team-mcp/internal/config"
 	"github.com/n-r-w/team-mcp/internal/server"
 	"github.com/n-r-w/team-mcp/internal/usecase"
 )
 
+const (
+	// defaultCleanupStopTimeout caps wait time for lifecycle collector stop during shutdown.
+	defaultCleanupStopTimeout = 2 * time.Second
+)
+
+// lifecycleRunner executes periodic cleanup loops.
+type lifecycleRunner func(ctx context.Context) error
+
 // Service composes application dependencies and runs MCP server lifecycle.
 type Service struct {
 	runServer          func(ctx context.Context) error
 	runCleanup         lifecycleRunner
-	runShutdown        lifecycleRunner
 	cleanupStopTimeout time.Duration
-	shutdownTimeout    time.Duration
 }
 
 // New wires all components required to run the MCP server.
@@ -31,19 +36,19 @@ func New(cfg *config.Config, version string) (*Service, error) {
 		return nil, fmt.Errorf("build logger: %w", err)
 	}
 
+	if err := filesystem.ValidateRuntimeMessageDir(cfg.MessageDir); err != nil {
+		return nil, fmt.Errorf("validate message directory handoff: %w", err)
+	}
+
 	logStartupConfig(cfg)
 
-	runStateAdapter := runstate.New(cfg.MaxActiveRuns)
-	queueAdapter := queue.New(cfg.MaxBufferedMessages)
-	messageStoreAdapter, messageStoreErr := filesystem.New(cfg.MessageDir)
-	if messageStoreErr != nil {
-		return nil, fmt.Errorf("build message store adapter: %w", messageStoreErr)
+	boardStore, boardStoreErr := filesystem.NewBoardStore(cfg.MessageDir)
+	if boardStoreErr != nil {
+		return nil, fmt.Errorf("build authoritative board store: %w", boardStoreErr)
 	}
 
 	usecaseService := usecase.New(
-		runStateAdapter,
-		messageStoreAdapter,
-		queueAdapter,
+		boardStore,
 		usecase.Options{SessionTTL: cfg.SessionTTL, MaxTitleLength: cfg.MaxTitleLength},
 	)
 
@@ -53,7 +58,6 @@ func New(cfg *config.Config, version string) (*Service, error) {
 		CoordinationUseCase: usecaseService,
 		ToolDescriptions: server.ToolDescriptions{
 			DeskCreate:    cfg.ToolDeskCreateDesc,
-			DeskRemove:    cfg.ToolDeskRemoveDesc,
 			TopicCreate:   cfg.ToolTopicCreateDesc,
 			TopicList:     cfg.ToolTopicListDesc,
 			MessageCreate: cfg.ToolMessageCreateDesc,
@@ -68,9 +72,7 @@ func New(cfg *config.Config, version string) (*Service, error) {
 		runCleanup: func(ctx context.Context) error {
 			return usecaseService.RunLifecycleCollector(ctx, cfg.LifecycleCollectInterval)
 		},
-		runShutdown:        usecaseService.CleanupAllRuns,
 		cleanupStopTimeout: defaultCleanupStopTimeout,
-		shutdownTimeout:    defaultShutdownTimeout,
 	}, nil
 }
 
@@ -82,10 +84,6 @@ func logStartupConfig(cfg *config.Config) {
 		cfg.MessageDir,
 		"TEAM_MCP_SESSION_TTL",
 		cfg.SessionTTL.String(),
-		"TEAM_MCP_MAX_BUFFERED_MESSAGES",
-		cfg.MaxBufferedMessages,
-		"TEAM_MCP_MAX_ACTIVE_RUNS",
-		cfg.MaxActiveRuns,
 		"TEAM_MCP_MAX_TITLE_LENGTH",
 		cfg.MaxTitleLength,
 		"TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL",
@@ -111,21 +109,8 @@ func (s *Service) Run(ctx context.Context) error {
 	cancelCleanup()
 	s.waitCleanupStop(cleanupCtx, done)
 
-	shutdownErr := s.runShutdownWithTimeout(ctx)
-	if shutdownErr != nil {
-		slog.ErrorContext(ctx, "shutdown cleanup failed", "error", shutdownErr)
-	}
-
 	if runErr != nil {
-		if shutdownErr != nil {
-			return errors.Join(fmt.Errorf("run mcp server: %w", runErr), fmt.Errorf("shutdown cleanup: %w", shutdownErr))
-		}
-
 		return fmt.Errorf("run mcp server: %w", runErr)
-	}
-
-	if shutdownErr != nil {
-		return fmt.Errorf("shutdown cleanup: %w", shutdownErr)
 	}
 
 	return nil
@@ -154,33 +139,6 @@ func (s *Service) waitCleanupStop(ctx context.Context, done <-chan struct{}) {
 		)
 
 		return
-	}
-}
-
-// runShutdownWithTimeout bounds shutdown cleanup duration and returns timeout error on deadline exceed.
-func (s *Service) runShutdownWithTimeout(ctx context.Context) error {
-	if s.runShutdown == nil {
-		return nil
-	}
-
-	shutdownCtx := context.WithoutCancel(ctx)
-	if s.shutdownTimeout <= 0 {
-		return s.runShutdown(shutdownCtx)
-	}
-
-	boundedShutdownCtx, cancelShutdown := context.WithTimeout(shutdownCtx, s.shutdownTimeout)
-	defer cancelShutdown()
-
-	shutdownDone := make(chan error, 1)
-	go func() {
-		shutdownDone <- s.runShutdown(boundedShutdownCtx)
-	}()
-
-	select {
-	case err := <-shutdownDone:
-		return err
-	case <-boundedShutdownCtx.Done():
-		return boundedShutdownCtx.Err()
 	}
 }
 

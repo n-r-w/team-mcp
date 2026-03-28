@@ -13,11 +13,8 @@ import (
 type Config struct {
 	MessageDir               string
 	SessionTTL               time.Duration
-	MaxBufferedMessages      int
-	MaxActiveRuns            int
 	MaxTitleLength           int
 	ToolDeskCreateDesc       string
-	ToolDeskRemoveDesc       string
 	ToolTopicCreateDesc      string
 	ToolTopicListDesc        string
 	ToolMessageCreateDesc    string
@@ -31,12 +28,9 @@ type Config struct {
 // envConfig is raw env schema for caarlos0/env parsing.
 type envConfig struct {
 	MessageDir               string        `env:"TEAM_MCP_MESSAGE_DIR"`
-	SessionTTL               time.Duration `env:"TEAM_MCP_SESSION_TTL" envDefault:"24h"`
-	MaxBufferedMessages      int           `env:"TEAM_MCP_MAX_BUFFERED_MESSAGES" envDefault:"10000"`
-	MaxActiveRuns            int           `env:"TEAM_MCP_MAX_ACTIVE_RUNS" envDefault:"1000"`
+	SessionTTL               time.Duration `env:"TEAM_MCP_SESSION_TTL" envDefault:"168h"`
 	MaxTitleLength           int           `env:"TEAM_MCP_MAX_TITLE_LENGTH" envDefault:"200"`
 	ToolDeskCreateDesc       string        `env:"TEAM_MCP_TOOL_DESK_CREATE_DESC"`
-	ToolDeskRemoveDesc       string        `env:"TEAM_MCP_TOOL_DESK_REMOVE_DESC"`
 	ToolTopicCreateDesc      string        `env:"TEAM_MCP_TOOL_TOPIC_CREATE_DESC"`
 	ToolTopicListDesc        string        `env:"TEAM_MCP_TOOL_TOPIC_LIST_DESC"`
 	ToolMessageCreateDesc    string        `env:"TEAM_MCP_TOOL_MESSAGE_CREATE_DESC"`
@@ -44,7 +38,7 @@ type envConfig struct {
 	ToolMessageGetDesc       string        `env:"TEAM_MCP_TOOL_MESSAGE_GET_DESC"`
 	SystemPrompt             string        `env:"TEAM_MCP_SYSTEM_PROMPT"`
 	LogLevel                 string        `env:"TEAM_MCP_LOG_LEVEL" envDefault:"info"`
-	LifecycleCollectInterval time.Duration `env:"TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL" envDefault:"60s"`
+	LifecycleCollectInterval time.Duration `env:"TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL" envDefault:"1h"`
 }
 
 // Load parses environment variables once and validates lifecycle/config invariants.
@@ -62,11 +56,8 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		MessageDir:               messageDir,
 		SessionTTL:               parsed.SessionTTL,
-		MaxBufferedMessages:      parsed.MaxBufferedMessages,
-		MaxActiveRuns:            parsed.MaxActiveRuns,
 		MaxTitleLength:           parsed.MaxTitleLength,
 		ToolDeskCreateDesc:       parsed.ToolDeskCreateDesc,
-		ToolDeskRemoveDesc:       parsed.ToolDeskRemoveDesc,
 		ToolTopicCreateDesc:      parsed.ToolTopicCreateDesc,
 		ToolTopicListDesc:        parsed.ToolTopicListDesc,
 		ToolMessageCreateDesc:    parsed.ToolMessageCreateDesc,
@@ -88,14 +79,6 @@ func Load() (*Config, error) {
 func validate(cfg *Config) error {
 	if cfg.SessionTTL < minimumSessionTTL {
 		return newValidationError("TEAM_MCP_SESSION_TTL", fmt.Sprintf("must be >= %s", minimumSessionTTL))
-	}
-
-	if cfg.MaxBufferedMessages < minimumPositiveInteger {
-		return newValidationError("TEAM_MCP_MAX_BUFFERED_MESSAGES", "must be >= 1")
-	}
-
-	if cfg.MaxActiveRuns < minimumPositiveInteger {
-		return newValidationError("TEAM_MCP_MAX_ACTIVE_RUNS", "must be >= 1")
 	}
 
 	if cfg.MaxTitleLength < minimumPositiveInteger {
