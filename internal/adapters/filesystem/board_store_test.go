@@ -277,6 +277,90 @@ func TestBoardStoreCollectExpiredDeskIDsTreatsCorruptedMetadataAsExpired(t *test
 	require.NotContains(t, expiredDeskIDs, activeDeskID)
 }
 
+// TestBoardStoreCollectExpiredDeskIDsSkipsUnknownDirectories verifies TTL cleanup ignores non-desk directories under the shared root.
+func TestBoardStoreCollectExpiredDeskIDsSkipsUnknownDirectories(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	store, rootDir := newBoardStoreForTest(t)
+	expiredDeskID := mustCreateDesk(t, store, time.Now().UTC().Add(-2*time.Hour))
+	foreignDirName := "user-folder"
+	foreignDirPath := filepath.Join(rootDir, foreignDirName)
+	require.NoError(t, os.Mkdir(foreignDirPath, directoryPermission))
+	require.NoError(t, os.WriteFile(filepath.Join(foreignDirPath, "notes.txt"), []byte("keep"), filePermission))
+
+	expiredDeskIDs, err := store.CollectExpiredDeskIDs(ctx, time.Now().UTC(), time.Hour)
+	require.NoError(t, err)
+	require.Contains(t, expiredDeskIDs, expiredDeskID)
+	require.NotContains(t, expiredDeskIDs, foreignDirName)
+}
+
+// TestBoardStoreWriteTopicScaffoldDoesNotRecreateDeletedDesk verifies topic precommit fails instead of recreating a removed desk.
+func TestBoardStoreWriteTopicScaffoldDoesNotRecreateDeletedDesk(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	topicID := "topic-new"
+	topicState := boardTopicState{
+		Version:                  1,
+		Messages:                 []domain.MessageHeader{},
+		MessageByNormalizedTitle: map[string]string{},
+	}
+
+	require.NoError(t, os.RemoveAll(store.deskDir(deskID)))
+
+	err := store.writeTopicScaffold(t.Context(), deskID, topicID, topicState)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, statErr := os.Stat(store.deskDir(deskID))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+// TestBoardStoreWriteMessageArtifactsDoesNotRecreateDeletedDesk verifies message precommit fails instead of recreating a removed desk.
+func TestBoardStoreWriteMessageArtifactsDoesNotRecreateDeletedDesk(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	topicID := mustCreateTopic(t, store, deskID, "Topic")
+	messageID := "message-new"
+
+	require.NoError(t, os.RemoveAll(store.deskDir(deskID)))
+
+	err := store.writeMessageArtifacts(deskID, topicID, messageID, "# payload")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, statErr := os.Stat(store.deskDir(deskID))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+
+	_, found, lookupErr := store.loadMessageLookup(messageID)
+	require.NoError(t, lookupErr)
+	require.False(t, found)
+}
+
+// TestBoardStoreCommitTopicStateDoesNotRecreateDeletedDesk verifies topic commit fails instead of recreating a removed desk.
+func TestBoardStoreCommitTopicStateDoesNotRecreateDeletedDesk(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	topicID := mustCreateTopic(t, store, deskID, "Topic")
+	topicState, found, err := store.loadTopicState(deskID, topicID)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	nextTopicState := cloneTopicState(topicState)
+	nextTopicState.Version = topicState.Version + 1
+	nextTopicState.Messages = append(nextTopicState.Messages, domain.MessageHeader{MessageID: "message-new", Title: "Title"})
+	nextTopicState.MessageByNormalizedTitle[normalizeTitleForTest("Title")] = "message-new"
+
+	require.NoError(t, os.RemoveAll(store.deskDir(deskID)))
+
+	err = store.commitTopicState(t.Context(), deskID, topicID, nextTopicState)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, statErr := os.Stat(store.deskDir(deskID))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
 // TestBoardStoreDeleteDeskIsIdempotent verifies cleanup can safely race and removes visible desk state.
 func TestBoardStoreDeleteDeskIsIdempotent(t *testing.T) {
 	t.Parallel()

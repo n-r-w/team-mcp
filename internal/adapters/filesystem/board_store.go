@@ -409,7 +409,22 @@ func (s *BoardStore) CollectExpiredDeskIDs(_ context.Context, now time.Time, ttl
 		}
 
 		if !found {
-			expiredDeskIDs = append(expiredDeskIDs, entry.Name())
+			knownDesk, markerErr := s.hasDeskMetadataMarker(entry.Name())
+			if markerErr != nil {
+				slog.Warn(
+					"failed to inspect desk markers, skipping directory",
+					"desk_id",
+					entry.Name(),
+					"error",
+					markerErr,
+				)
+
+				continue
+			}
+
+			if knownDesk {
+				expiredDeskIDs = append(expiredDeskIDs, entry.Name())
+			}
 
 			continue
 		}
@@ -423,6 +438,26 @@ func (s *BoardStore) CollectExpiredDeskIDs(_ context.Context, now time.Time, ttl
 	}
 
 	return expiredDeskIDs, nil
+}
+
+// hasDeskMetadataMarker reports whether the directory contains Team MCP desk metadata roots.
+func (s *BoardStore) hasDeskMetadataMarker(deskID string) (bool, error) {
+	entries, err := os.ReadDir(s.deskDir(deskID))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	for _, entry := range entries {
+		if entry.Name() == boardDeskStateFileName || entry.Name() == boardVersionsDirName {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // topicVersionsDir returns the absolute path of the topic version directory for failure-injection tests.
@@ -490,7 +525,7 @@ func (s *BoardStore) ensureDeskDirs(deskID string) error {
 
 // writeTopicScaffold prepares hidden topic metadata and lookup records before desk metadata makes the topic visible.
 func (s *BoardStore) writeTopicScaffold(ctx context.Context, deskID, topicID string, topicState boardTopicState) error {
-	if err := ensureDirectories(s.topicVersionsDir(deskID, topicID)); err != nil {
+	if err := createDirectory(s.topicVersionsDir(deskID, topicID)); err != nil {
 		return err
 	}
 
@@ -799,6 +834,15 @@ func ensureDirectories(paths ...string) error {
 	return nil
 }
 
+// createDirectory creates one new directory and fails if its parent hierarchy is gone.
+func createDirectory(path string) error {
+	if err := os.Mkdir(path, directoryPermission); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // removeIfExists removes one file path while treating missing entries as already cleaned up.
 func removeIfExists(path string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -894,10 +938,6 @@ func writeJSONExclusive(path string, value any) error {
 
 // writeBytesExclusive writes one immutable file used for snapshots, payloads, and direct lookup records.
 func writeBytesExclusive(path string, payload []byte) error {
-	if err := ensureDirectories(filepath.Dir(path)); err != nil {
-		return err
-	}
-
 	file, err := openFileExclusive(path, filePermission)
 	if err != nil {
 		return err
@@ -934,10 +974,6 @@ func writeJSONMirror(path string, value any) error {
 // writeBytesMirror writes a temporary file and replaces the mirror path in the same directory.
 // Go does not guarantee atomic rename semantics on every platform, including Windows.
 func writeBytesMirror(path string, payload []byte) error {
-	if err := ensureDirectories(filepath.Dir(path)); err != nil {
-		return err
-	}
-
 	tempPath := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".tmp-"+uuid.NewString())
 	if err := os.WriteFile(tempPath, payload, filePermission); err != nil {
 		return err
