@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/n-r-w/team-mcp/internal/adapters/filesystem"
 	"github.com/n-r-w/team-mcp/internal/config"
 )
 
@@ -46,6 +47,22 @@ func (s *serviceSuite) TestNewServiceBuildsForValidConfig() {
 	s.T().Cleanup(lockAppinitLoggerGlobals(s.T()))
 
 	cfg := s.validConfig()
+
+	service, err := New(cfg, "test-version")
+	s.Require().NoError(err)
+	s.NotNil(service)
+}
+
+// TestNewServiceBuildsForExistingRuntimeStore verifies startup accepts a message directory populated by a previous Team MCP run.
+func (s *serviceSuite) TestNewServiceBuildsForExistingRuntimeStore() {
+	s.T().Cleanup(lockAppinitLoggerGlobals(s.T()))
+
+	cfg := s.validConfig()
+	store, err := filesystem.NewBoardStore(cfg.MessageDir)
+	s.Require().NoError(err)
+
+	_, err = store.CreateDesk(s.T().Context(), time.Now().UTC())
+	s.Require().NoError(err)
 
 	service, err := New(cfg, "test-version")
 	s.Require().NoError(err)

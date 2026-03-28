@@ -34,6 +34,29 @@ func TestBoardStoreCreateDeskPersistsCreatedAt(t *testing.T) {
 	require.Equal(t, []string{deskID}, expiredDeskIDs)
 }
 
+// TestValidateRuntimeMessageDirAllowsExistingBoardState verifies runtime startup accepts a directory that already contains Team MCP state.
+func TestValidateRuntimeMessageDirAllowsExistingBoardState(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	store, rootDir := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	topicID := mustCreateTopic(t, store, deskID, "Topic")
+	_, status, existingMessageID, err := store.CreateMessage(
+		ctx,
+		topicID,
+		"Message",
+		normalizeTitleForTest("Message"),
+		"# payload",
+	)
+	require.NoError(t, err)
+	require.Equal(t, domain.BusinessStatusOK, status)
+	require.Empty(t, existingMessageID)
+
+	err = ValidateRuntimeMessageDir(rootDir)
+	require.NoError(t, err)
+}
+
 // TestBoardStoreCreateTopicPersistsOrderAndDedupe verifies desk metadata owns topic titles and order on disk.
 func TestBoardStoreCreateTopicPersistsOrderAndDedupe(t *testing.T) {
 	t.Parallel()

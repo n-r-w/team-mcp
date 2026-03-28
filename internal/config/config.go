@@ -28,7 +28,7 @@ type Config struct {
 // envConfig is raw env schema for caarlos0/env parsing.
 type envConfig struct {
 	MessageDir               string        `env:"TEAM_MCP_MESSAGE_DIR"`
-	SessionTTL               time.Duration `env:"TEAM_MCP_SESSION_TTL" envDefault:"24h"`
+	SessionTTL               time.Duration `env:"TEAM_MCP_SESSION_TTL" envDefault:"168h"`
 	MaxTitleLength           int           `env:"TEAM_MCP_MAX_TITLE_LENGTH" envDefault:"200"`
 	ToolDeskCreateDesc       string        `env:"TEAM_MCP_TOOL_DESK_CREATE_DESC"`
 	ToolTopicCreateDesc      string        `env:"TEAM_MCP_TOOL_TOPIC_CREATE_DESC"`
@@ -38,7 +38,7 @@ type envConfig struct {
 	ToolMessageGetDesc       string        `env:"TEAM_MCP_TOOL_MESSAGE_GET_DESC"`
 	SystemPrompt             string        `env:"TEAM_MCP_SYSTEM_PROMPT"`
 	LogLevel                 string        `env:"TEAM_MCP_LOG_LEVEL" envDefault:"info"`
-	LifecycleCollectInterval time.Duration `env:"TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL" envDefault:"60s"`
+	LifecycleCollectInterval time.Duration `env:"TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL" envDefault:"1h"`
 }
 
 // Load parses environment variables once and validates lifecycle/config invariants.

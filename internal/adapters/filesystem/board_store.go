@@ -35,8 +35,8 @@ func NewBoardStore(rootDir string) (*BoardStore, error) {
 	return &BoardStore{rootDir: cleanRootDir}, nil
 }
 
-// ValidateRuntimeMessageDir rejects reused non-empty directories so runtime never
-// starts from mixed storage generations.
+// ValidateRuntimeMessageDir verifies the configured runtime storage path is usable.
+// It accepts both new directories and directories populated by previous Team MCP runs.
 func ValidateRuntimeMessageDir(rootDir string) error {
 	cleanRootDir, err := normalizeRootDir(rootDir)
 	if err != nil {
@@ -54,15 +54,6 @@ func ValidateRuntimeMessageDir(rootDir string) error {
 
 	if !rootInfo.IsDir() {
 		return errors.New("message directory must point to a directory")
-	}
-
-	entries, err := os.ReadDir(cleanRootDir)
-	if err != nil {
-		return err
-	}
-
-	if len(entries) > 0 {
-		return errors.New("message directory must be missing or empty before runtime startup")
 	}
 
 	return nil

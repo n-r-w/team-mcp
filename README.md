@@ -58,9 +58,8 @@ task build
 - `TEAM_MCP_MESSAGE_DIR` (optional, default: `<os-temp-dir>/team-mcp/messages`)
   * Absolute directory path where authoritative desk, topic, message, and payload state is stored.
   * If empty, the server uses the OS temp directory.
-  * The directory must be missing or empty when the server starts.
 
-- `TEAM_MCP_SESSION_TTL` (optional, default: `24h`)
+- `TEAM_MCP_SESSION_TTL` (optional, default: `168h` - 7 days)
   * TTL for desk sessions.
   * Must be at least `1m`.
 
@@ -93,7 +92,7 @@ task build
   * Log level for structured JSON logs.
   * Allowed values: `debug`, `info`, `warn`, `error`.
 
-- `TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL` (optional, default: `60s`)
+- `TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL` (optional, default: `1h`)
   * Interval for runtime lifecycle cleanup of expired desks.
   * Must be greater than `0`.
 
