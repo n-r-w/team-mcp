@@ -14,8 +14,6 @@ import (
 type ICoordination interface {
 	// DeskCreate creates desk and returns desk identifier.
 	DeskCreate(ctx context.Context) (domain.DeskCreateResult, error)
-	// DeskRemove synchronously removes desk-linked data from memory and disk.
-	DeskRemove(ctx context.Context, request domain.DeskRemoveRequest) (domain.DeskRemoveResult, error)
 	// TopicCreate creates topic in desk and is idempotent by (desk_id,title).
 	TopicCreate(ctx context.Context, request domain.TopicCreateRequest) (domain.TopicCreateResult, error)
 	// TopicList returns ordered topic headers for desk.

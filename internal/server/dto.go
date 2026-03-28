@@ -10,16 +10,6 @@ type deskCreateOutput struct {
 	DeskID string `json:"desk_id"`
 }
 
-// deskRemoveInput is MCP input DTO for desk_remove tool.
-type deskRemoveInput struct {
-	DeskID string `json:"desk_id" jsonschema:"desk identifier to remove. required"`
-}
-
-// deskRemoveOutput is MCP output DTO for desk_remove tool.
-type deskRemoveOutput struct {
-	Status string `json:"status"`
-}
-
 // topicCreateInput is MCP input DTO for topic_create tool.
 type topicCreateInput struct {
 	DeskID string `json:"desk_id" jsonschema:"desk identifier. required"`
@@ -53,7 +43,7 @@ type topicHeaderDTO struct {
 type messageCreateInput struct {
 	TopicID string `json:"topic_id" jsonschema:"topic identifier. required"`
 	Title   string `json:"title" jsonschema:"message title. required"`
-	Content string `json:"content" jsonschema:"message markdown content. required. no max length validation"`
+	Content string `json:"content" jsonschema:"message markdown content. required"`
 }
 
 // messageCreateOutput is MCP output DTO for message_create tool.

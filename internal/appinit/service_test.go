@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 
 	"github.com/n-r-w/team-mcp/internal/config"
 )
+
+var appinitLoggerGlobalsMu sync.Mutex
 
 // serviceSuite validates startup wiring and logger-config fail-fast behavior.
 type serviceSuite struct {
@@ -27,8 +30,21 @@ func TestServiceSuite(t *testing.T) {
 	suite.Run(t, new(serviceSuite))
 }
 
+// lockAppinitLoggerGlobals serializes tests that read or mutate process-global logger and stdio state.
+func lockAppinitLoggerGlobals(t testing.TB) func() {
+	t.Helper()
+
+	appinitLoggerGlobalsMu.Lock()
+
+	return func() {
+		appinitLoggerGlobalsMu.Unlock()
+	}
+}
+
 // TestNewServiceBuildsForValidConfig verifies startup wiring succeeds for valid runtime configuration.
 func (s *serviceSuite) TestNewServiceBuildsForValidConfig() {
+	s.T().Cleanup(lockAppinitLoggerGlobals(s.T()))
+
 	cfg := s.validConfig()
 
 	service, err := New(cfg, "test-version")
@@ -38,6 +54,8 @@ func (s *serviceSuite) TestNewServiceBuildsForValidConfig() {
 
 // TestNewServiceLogsStartupConfig verifies startup emits effective runtime env-equivalent values.
 func (s *serviceSuite) TestNewServiceLogsStartupConfig() {
+	s.T().Cleanup(lockAppinitLoggerGlobals(s.T()))
+
 	cfg := s.validConfig()
 
 	originalStderr := os.Stderr
@@ -62,8 +80,6 @@ func (s *serviceSuite) TestNewServiceLogsStartupConfig() {
 	s.Contains(logOutput, "\"msg\":\"startup configuration\"")
 	s.Contains(logOutput, "\"TEAM_MCP_MESSAGE_DIR\":")
 	s.Contains(logOutput, "\"TEAM_MCP_SESSION_TTL\":")
-	s.Contains(logOutput, "\"TEAM_MCP_MAX_BUFFERED_MESSAGES\":")
-	s.Contains(logOutput, "\"TEAM_MCP_MAX_ACTIVE_RUNS\":")
 	s.Contains(logOutput, "\"TEAM_MCP_MAX_TITLE_LENGTH\":")
 	s.Contains(logOutput, "\"TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL\":")
 }
@@ -82,9 +98,7 @@ func (s *serviceSuite) TestRunStopsCleanupWhenServerReturns() {
 
 			return ctx.Err()
 		},
-		runShutdown:        nil,
 		cleanupStopTimeout: defaultCleanupStopTimeout,
-		shutdownTimeout:    defaultShutdownTimeout,
 	}
 
 	err := service.Run(s.T().Context())
@@ -110,55 +124,13 @@ func (s *serviceSuite) TestRunWrapsServerError() {
 
 			return ctx.Err()
 		},
-		runShutdown:        nil,
 		cleanupStopTimeout: defaultCleanupStopTimeout,
-		shutdownTimeout:    defaultShutdownTimeout,
 	}
 
 	err := service.Run(s.T().Context())
 	s.Require().Error(err)
 	s.Require().ErrorContains(err, "run mcp server")
 	s.Require().ErrorIs(err, expectedErr)
-}
-
-// TestRunCallsShutdownCleanup verifies Run invokes shutdown cleanup after server stops.
-func (s *serviceSuite) TestRunCallsShutdownCleanup() {
-	cleanupDone := make(chan struct{})
-	shutdownDone := make(chan struct{}, 1)
-
-	service := &Service{
-		runServer: func(context.Context) error {
-			return nil
-		},
-		runCleanup: func(ctx context.Context) error {
-			<-ctx.Done()
-			close(cleanupDone)
-
-			return ctx.Err()
-		},
-		runShutdown: func(context.Context) error {
-			shutdownDone <- struct{}{}
-
-			return nil
-		},
-		cleanupStopTimeout: defaultCleanupStopTimeout,
-		shutdownTimeout:    defaultShutdownTimeout,
-	}
-
-	err := service.Run(s.T().Context())
-	s.Require().NoError(err)
-
-	select {
-	case <-cleanupDone:
-	case <-time.After(time.Second):
-		s.FailNow("cleanup goroutine did not stop in time")
-	}
-
-	select {
-	case <-shutdownDone:
-	case <-time.After(time.Second):
-		s.FailNow("shutdown cleanup was not called")
-	}
 }
 
 // TestRunDoesNotBlockOnStuckCleanup verifies Run returns within bounded time even if cleanup goroutine ignores cancellation.
@@ -174,9 +146,7 @@ func (s *serviceSuite) TestRunDoesNotBlockOnStuckCleanup() {
 
 			return nil
 		},
-		runShutdown:        nil,
 		cleanupStopTimeout: 20 * time.Millisecond,
-		shutdownTimeout:    defaultShutdownTimeout,
 	}
 
 	done := make(chan error, 1)
@@ -194,46 +164,10 @@ func (s *serviceSuite) TestRunDoesNotBlockOnStuckCleanup() {
 	close(cleanupRelease)
 }
 
-// TestRunDoesNotBlockOnStuckShutdown verifies Run returns when shutdown callback ignores cancellation.
-func (s *serviceSuite) TestRunDoesNotBlockOnStuckShutdown() {
-	shutdownRelease := make(chan struct{})
-
-	service := &Service{
-		runServer: func(context.Context) error {
-			return nil
-		},
-		runCleanup: func(ctx context.Context) error {
-			<-ctx.Done()
-
-			return ctx.Err()
-		},
-		runShutdown: func(context.Context) error {
-			<-shutdownRelease
-
-			return nil
-		},
-		cleanupStopTimeout: defaultCleanupStopTimeout,
-		shutdownTimeout:    20 * time.Millisecond,
-	}
-
-	done := make(chan error, 1)
-	go func() {
-		done <- service.Run(s.T().Context())
-	}()
-
-	select {
-	case err := <-done:
-		s.Require().Error(err)
-		s.Require().ErrorContains(err, "shutdown cleanup")
-	case <-time.After(time.Second):
-		s.FailNow("run did not return in bounded time")
-	}
-
-	close(shutdownRelease)
-}
-
 // TestBuildLoggerWritesToStderrOnly verifies stdio MCP transport remains parseable because logs avoid stdout.
 func (s *serviceSuite) TestBuildLoggerWritesToStderrOnly() {
+	s.T().Cleanup(lockAppinitLoggerGlobals(s.T()))
+
 	cfg := s.validConfig()
 
 	originalStdout := os.Stdout
@@ -276,11 +210,8 @@ func (s *serviceSuite) validConfig() *config.Config {
 	return &config.Config{
 		MessageDir:               filepath.Join(s.T().TempDir(), "messages"),
 		SessionTTL:               10 * time.Minute,
-		MaxBufferedMessages:      64,
-		MaxActiveRuns:            16,
 		MaxTitleLength:           200,
 		ToolDeskCreateDesc:       "",
-		ToolDeskRemoveDesc:       "",
 		ToolTopicCreateDesc:      "",
 		ToolTopicListDesc:        "",
 		ToolMessageCreateDesc:    "",

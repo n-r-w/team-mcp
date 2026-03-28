@@ -23,7 +23,6 @@ func TestValidateSuite(t *testing.T) {
 // TestLoadReadsMCPMetadataOverrides verifies env parsing populates MCP tool description and system prompt overrides.
 func TestLoadReadsMCPMetadataOverrides(t *testing.T) {
 	t.Setenv("TEAM_MCP_TOOL_DESK_CREATE_DESC", "desk create override")
-	t.Setenv("TEAM_MCP_TOOL_DESK_REMOVE_DESC", "desk remove override")
 	t.Setenv("TEAM_MCP_TOOL_TOPIC_CREATE_DESC", "topic create override")
 	t.Setenv("TEAM_MCP_TOOL_TOPIC_LIST_DESC", "topic list override")
 	t.Setenv("TEAM_MCP_TOOL_MESSAGE_CREATE_DESC", "message create override")
@@ -34,7 +33,6 @@ func TestLoadReadsMCPMetadataOverrides(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, "desk create override", cfg.ToolDeskCreateDesc)
-	require.Equal(t, "desk remove override", cfg.ToolDeskRemoveDesc)
 	require.Equal(t, "topic create override", cfg.ToolTopicCreateDesc)
 	require.Equal(t, "topic list override", cfg.ToolTopicListDesc)
 	require.Equal(t, "message create override", cfg.ToolMessageCreateDesc)
@@ -93,11 +91,8 @@ func (s *validateSuite) validConfig() *Config {
 	return &Config{
 		MessageDir:               "messages",
 		SessionTTL:               10 * time.Minute,
-		MaxBufferedMessages:      64,
-		MaxActiveRuns:            16,
 		MaxTitleLength:           200,
 		ToolDeskCreateDesc:       "",
-		ToolDeskRemoveDesc:       "",
 		ToolTopicCreateDesc:      "",
 		ToolTopicListDesc:        "",
 		ToolMessageCreateDesc:    "",

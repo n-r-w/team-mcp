@@ -7,16 +7,6 @@ type DeskCreateResult struct {
 	DeskID string
 }
 
-// DeskRemoveRequest contains input for desk_remove operation.
-type DeskRemoveRequest struct {
-	DeskID string
-}
-
-// DeskRemoveResult contains output for desk_remove operation.
-type DeskRemoveResult struct {
-	Status BusinessStatus
-}
-
 // TopicCreateRequest contains input for topic_create operation.
 type TopicCreateRequest struct {
 	DeskID string

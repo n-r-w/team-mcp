@@ -12,7 +12,6 @@ type Options struct {
 // ToolDescriptions defines optional MCP tool description overrides.
 type ToolDescriptions struct {
 	DeskCreate    string
-	DeskRemove    string
 	TopicCreate   string
 	TopicList     string
 	MessageCreate string

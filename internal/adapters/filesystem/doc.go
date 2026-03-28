@@ -1,2 +1,2 @@
-// Package filesystem provides message markdown persistence in local filesystem.
+// Package filesystem provides authoritative disk-backed board storage.
 package filesystem
