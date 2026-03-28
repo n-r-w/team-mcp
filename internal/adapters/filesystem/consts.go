@@ -3,9 +3,11 @@ package filesystem
 import "os"
 
 const (
-	// directoryPermission restricts desk directory access to owner/group only.
+	// directoryPermission stores the default Unix directory mode for created storage paths.
+	// Windows may apply different ACL semantics.
 	directoryPermission os.FileMode = 0o750
-	// filePermission restricts payload/metadata file access to owner/group only.
+	// filePermission stores the default Unix file mode for created storage files.
+	// Windows may apply different ACL semantics.
 	filePermission os.FileMode = 0o640
 	// markdownExtension keeps persisted message payloads as markdown files.
 	markdownExtension = ".md"

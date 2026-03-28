@@ -556,9 +556,10 @@ func (s *BoardStore) commitTopicState(ctx context.Context, deskID, topicID strin
 	return nil
 }
 
-// refreshDeskMirror rewrites the human-readable desk metadata mirror without affecting the authoritative snapshot.
+// refreshDeskMirror best-effort rewrites the human-readable desk metadata mirror.
+// The committed snapshot stays authoritative if mirror replacement fails.
 func (s *BoardStore) refreshDeskMirror(ctx context.Context, deskID string, deskState boardDeskState) {
-	if err := writeJSONAtomically(s.deskStatePath(deskID), deskState); err != nil {
+	if err := writeJSONMirror(s.deskStatePath(deskID), deskState); err != nil {
 		slog.WarnContext(
 			ctx,
 			"failed to refresh desk metadata mirror",
@@ -572,9 +573,10 @@ func (s *BoardStore) refreshDeskMirror(ctx context.Context, deskID string, deskS
 	}
 }
 
-// refreshTopicMirror rewrites the human-readable topic metadata mirror without affecting the authoritative snapshot.
+// refreshTopicMirror best-effort rewrites the human-readable topic metadata mirror.
+// The committed snapshot stays authoritative if mirror replacement fails.
 func (s *BoardStore) refreshTopicMirror(ctx context.Context, deskID, topicID string, topicState boardTopicState) {
-	if err := writeJSONAtomically(s.topicStatePath(deskID, topicID), topicState); err != nil {
+	if err := writeJSONMirror(s.topicStatePath(deskID, topicID), topicState); err != nil {
 		slog.WarnContext(
 			ctx,
 			"failed to refresh topic metadata mirror",
@@ -643,7 +645,7 @@ func (s *BoardStore) cleanupMessageArtifacts(deskID, messageID string) error {
 // loadDeskState resolves the newest persisted desk snapshot.
 // A higher committed version wins over the mirrored state file.
 func (s *BoardStore) loadDeskState(deskID string) (boardDeskState, bool, error) {
-	return loadLatestState[boardDeskState](
+	return loadLatestState(
 		s.deskStatePath(deskID),
 		s.deskVersionsDir(deskID),
 		func(state boardDeskState) int64 { return state.Version },
@@ -653,7 +655,7 @@ func (s *BoardStore) loadDeskState(deskID string) (boardDeskState, bool, error) 
 // loadTopicState resolves the newest persisted topic snapshot.
 // A higher committed version wins over the mirrored state file.
 func (s *BoardStore) loadTopicState(deskID, topicID string) (boardTopicState, bool, error) {
-	return loadLatestState[boardTopicState](
+	return loadLatestState(
 		s.topicStatePath(deskID, topicID),
 		s.topicVersionsDir(deskID, topicID),
 		func(state boardTopicState) int64 { return state.Version },
@@ -918,18 +920,20 @@ func writeBytesExclusive(path string, payload []byte) error {
 	return nil
 }
 
-// writeJSONAtomically refreshes the mutable mirror file through rename so readers never see torn JSON.
-func writeJSONAtomically(path string, value any) error {
+// writeJSONMirror refreshes a readable mirror file using same-directory temp-file replacement.
+// Committed snapshots remain authoritative across platform-specific rename semantics.
+func writeJSONMirror(path string, value any) error {
 	payload, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
 
-	return writeBytesAtomically(path, payload)
+	return writeBytesMirror(path, payload)
 }
 
-// writeBytesAtomically writes a temporary file and swaps it into place in one rename step.
-func writeBytesAtomically(path string, payload []byte) error {
+// writeBytesMirror writes a temporary file and replaces the mirror path in the same directory.
+// Go does not guarantee atomic rename semantics on every platform, including Windows.
+func writeBytesMirror(path string, payload []byte) error {
 	if err := ensureDirectories(filepath.Dir(path)); err != nil {
 		return err
 	}

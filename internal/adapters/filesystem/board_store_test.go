@@ -173,6 +173,37 @@ func TestBoardStoreGetMessageUsesDirectLookup(t *testing.T) {
 	require.Equal(t, "# lookup payload", content)
 }
 
+// TestBoardStoreListMessagesFallsBackToCommittedSnapshotWhenTopicMirrorIsCorrupted verifies committed snapshots stay authoritative when the readable topic mirror is broken.
+func TestBoardStoreListMessagesFallsBackToCommittedSnapshotWhenTopicMirrorIsCorrupted(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	store, rootDir := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	topicID := mustCreateTopic(t, store, deskID, "Topic")
+	messageMeta, status, existingMessageID, err := store.CreateMessage(
+		ctx,
+		topicID,
+		"Snapshot Title",
+		normalizeTitleForTest("Snapshot Title"),
+		"# snapshot payload",
+	)
+	require.NoError(t, err)
+	require.Equal(t, domain.BusinessStatusOK, status)
+	require.Empty(t, existingMessageID)
+
+	topicStatePath := store.topicStatePath(deskID, topicID)
+	require.NoError(t, os.WriteFile(topicStatePath, []byte("{broken-json"), filePermission))
+
+	reopenedStore, err := NewBoardStore(rootDir)
+	require.NoError(t, err)
+
+	messages, found, err := reopenedStore.ListMessages(ctx, topicID)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, []domain.MessageHeader{{MessageID: messageMeta.MessageID, Title: "Snapshot Title"}}, messages)
+}
+
 // TestBoardStoreCreateMessageFailureDoesNotExposeHalfCreatedMessage verifies failed writes do not leak visible list or lookup state.
 func TestBoardStoreCreateMessageFailureDoesNotExposeHalfCreatedMessage(t *testing.T) {
 	t.Parallel()
@@ -182,10 +213,12 @@ func TestBoardStoreCreateMessageFailureDoesNotExposeHalfCreatedMessage(t *testin
 	deskID := mustCreateDesk(t, store, time.Now().UTC())
 	topicID := mustCreateTopic(t, store, deskID, "Topic")
 
-	topicVersionDir := store.topicVersionsDir(deskID, topicID)
-	require.NoError(t, os.Chmod(topicVersionDir, 0o500))
+	messageLookupDir := filepath.Join(rootDir, boardMessageLookupDirName)
+	require.NoError(t, os.RemoveAll(messageLookupDir))
+	require.NoError(t, os.WriteFile(messageLookupDir, []byte("blocked"), filePermission))
 	t.Cleanup(func() {
-		_ = os.Chmod(topicVersionDir, directoryPermission)
+		_ = os.Remove(messageLookupDir)
+		_ = os.Mkdir(messageLookupDir, directoryPermission)
 	})
 
 	_, _, _, err := store.CreateMessage(
@@ -196,6 +229,9 @@ func TestBoardStoreCreateMessageFailureDoesNotExposeHalfCreatedMessage(t *testin
 		"# payload",
 	)
 	require.Error(t, err)
+
+	require.NoError(t, os.Remove(messageLookupDir))
+	require.NoError(t, os.Mkdir(messageLookupDir, directoryPermission))
 
 	reopenedStore, err := NewBoardStore(rootDir)
 	require.NoError(t, err)
@@ -208,6 +244,12 @@ func TestBoardStoreCreateMessageFailureDoesNotExposeHalfCreatedMessage(t *testin
 	lookupEntries, readDirErr := os.ReadDir(filepath.Join(rootDir, boardMessageLookupDirName))
 	require.NoError(t, readDirErr)
 	require.Empty(t, lookupEntries)
+
+	deskEntries, readDeskDirErr := os.ReadDir(filepath.Join(rootDir, deskID))
+	require.NoError(t, readDeskDirErr)
+	for _, entry := range deskEntries {
+		require.NotEqual(t, markdownExtension, filepath.Ext(entry.Name()))
+	}
 }
 
 // TestBoardStoreCollectExpiredDeskIDsTreatsCorruptedMetadataAsExpired verifies corrupted desk metadata remains collectible.

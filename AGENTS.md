@@ -59,6 +59,7 @@ Full schema:
 3. ALL DTOs MUST be not exported.
 4. Use `task lint` and `task test` to check code before completing changes.
 5. Run `task fix` after making batch changes to improve code quality.
+6. Use cross-platform file operations ONLY.
 
 ## Testing rules
 1. Use `t.Context()` instead of `context.Background()`
