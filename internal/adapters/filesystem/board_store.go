@@ -125,11 +125,12 @@ func (s *BoardStore) CreateTopic(
 
 		writeErr := s.writeTopicScaffold(ctx, deskID, topicID, initialTopicState)
 		if writeErr != nil {
-			if errors.Is(writeErr, os.ErrNotExist) {
-				return emptyTopicHeader(), domain.BusinessStatusNotFound, false, nil
+			status, resolveErr := s.resolveCreateTopicMutationError(deskID, writeErr)
+			if resolveErr != nil {
+				return emptyTopicHeader(), "", false, resolveErr
 			}
 
-			return emptyTopicHeader(), "", false, writeErr
+			return emptyTopicHeader(), status, false, nil
 		}
 
 		nextDeskState := cloneDeskState(deskState)
@@ -146,11 +147,12 @@ func (s *BoardStore) CreateTopic(
 
 		if commitErr != nil {
 			_ = s.cleanupTopicArtifacts(deskID, topicID)
-			if errors.Is(commitErr, os.ErrNotExist) {
-				return emptyTopicHeader(), domain.BusinessStatusNotFound, false, nil
+			status, resolveErr := s.resolveCreateTopicMutationError(deskID, commitErr)
+			if resolveErr != nil {
+				return emptyTopicHeader(), "", false, resolveErr
 			}
 
-			return emptyTopicHeader(), "", false, commitErr
+			return emptyTopicHeader(), status, false, nil
 		}
 
 		return header, domain.BusinessStatusOK, true, nil
@@ -207,11 +209,12 @@ func (s *BoardStore) CreateMessage(
 		messageID := uuid.NewString()
 		writeErr := s.writeMessageArtifacts(deskID, topicID, messageID, payload)
 		if writeErr != nil {
-			if errors.Is(writeErr, os.ErrNotExist) {
-				return emptyMessageMeta(), domain.BusinessStatusNotFound, "", nil
+			status, resolveErr := s.resolveCreateMessageMutationError(topicID, writeErr)
+			if resolveErr != nil {
+				return emptyMessageMeta(), "", "", resolveErr
 			}
 
-			return emptyMessageMeta(), "", "", writeErr
+			return emptyMessageMeta(), status, "", nil
 		}
 
 		nextTopicState := cloneTopicState(topicState)
@@ -228,11 +231,12 @@ func (s *BoardStore) CreateMessage(
 
 		if commitErr != nil {
 			_ = s.cleanupMessageArtifacts(deskID, messageID)
-			if errors.Is(commitErr, os.ErrNotExist) {
-				return emptyMessageMeta(), domain.BusinessStatusNotFound, "", nil
+			status, resolveErr := s.resolveCreateMessageMutationError(topicID, commitErr)
+			if resolveErr != nil {
+				return emptyMessageMeta(), "", "", resolveErr
 			}
 
-			return emptyMessageMeta(), "", "", commitErr
+			return emptyMessageMeta(), status, "", nil
 		}
 
 		return domain.MessageMeta{
@@ -245,6 +249,47 @@ func (s *BoardStore) CreateMessage(
 
 	return emptyMessageMeta(), "", "",
 		fmt.Errorf("create message exceeded %d version retries", boardMaxVersionRetries)
+}
+
+// resolveCreateTopicMutationError maps missing-path write failures to not-found
+// only after desk visibility is rechecked.
+func (s *BoardStore) resolveCreateTopicMutationError(deskID string, mutationErr error) (domain.BusinessStatus, error) {
+	if !errors.Is(mutationErr, os.ErrNotExist) {
+		return "", mutationErr
+	}
+
+	_, found, err := s.loadDeskState(deskID)
+	if err != nil {
+		return "", errors.Join(mutationErr, err)
+	}
+
+	if !found {
+		return domain.BusinessStatusNotFound, nil
+	}
+
+	return "", mutationErr
+}
+
+// resolveCreateMessageMutationError maps missing-path write failures to
+// not-found only after topic visibility is rechecked.
+func (s *BoardStore) resolveCreateMessageMutationError(
+	topicID string,
+	mutationErr error,
+) (domain.BusinessStatus, error) {
+	if !errors.Is(mutationErr, os.ErrNotExist) {
+		return "", mutationErr
+	}
+
+	_, _, found, err := s.loadVisibleTopicState(topicID)
+	if err != nil {
+		return "", errors.Join(mutationErr, err)
+	}
+
+	if !found {
+		return domain.BusinessStatusNotFound, nil
+	}
+
+	return "", mutationErr
 }
 
 // ListMessages returns messages in persisted insertion order.

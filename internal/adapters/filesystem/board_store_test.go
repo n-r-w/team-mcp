@@ -252,6 +252,58 @@ func TestBoardStoreCreateMessageFailureDoesNotExposeHalfCreatedMessage(t *testin
 	}
 }
 
+// TestBoardStoreResolveCreateMessageMutationErrorKeepsWriteFailureVisible verifies os.ErrNotExist is not reclassified while the topic is still readable.
+func TestBoardStoreResolveCreateMessageMutationErrorKeepsWriteFailureVisible(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	topicID := mustCreateTopic(t, store, deskID, "Topic")
+
+	status, err := store.resolveCreateMessageMutationError(topicID, os.ErrNotExist)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.Empty(t, status)
+}
+
+// TestBoardStoreResolveCreateMessageMutationErrorReturnsNotFound verifies os.ErrNotExist maps to not-found only after the topic disappears.
+func TestBoardStoreResolveCreateMessageMutationErrorReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	topicID := mustCreateTopic(t, store, deskID, "Topic")
+	require.NoError(t, store.DeleteDesk(t.Context(), deskID))
+
+	status, err := store.resolveCreateMessageMutationError(topicID, os.ErrNotExist)
+	require.NoError(t, err)
+	require.Equal(t, domain.BusinessStatusNotFound, status)
+}
+
+// TestBoardStoreResolveCreateTopicMutationErrorKeepsWriteFailureVisible verifies os.ErrNotExist is not reclassified while the desk is still readable.
+func TestBoardStoreResolveCreateTopicMutationErrorKeepsWriteFailureVisible(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+
+	status, err := store.resolveCreateTopicMutationError(deskID, os.ErrNotExist)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.Empty(t, status)
+}
+
+// TestBoardStoreResolveCreateTopicMutationErrorReturnsNotFound verifies os.ErrNotExist maps to not-found only after the desk disappears.
+func TestBoardStoreResolveCreateTopicMutationErrorReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	require.NoError(t, store.DeleteDesk(t.Context(), deskID))
+
+	status, err := store.resolveCreateTopicMutationError(deskID, os.ErrNotExist)
+	require.NoError(t, err)
+	require.Equal(t, domain.BusinessStatusNotFound, status)
+}
+
 // TestBoardStoreCollectExpiredDeskIDsTreatsCorruptedMetadataAsExpired verifies corrupted desk metadata remains collectible.
 func TestBoardStoreCollectExpiredDeskIDsTreatsCorruptedMetadataAsExpired(t *testing.T) {
 	t.Parallel()
