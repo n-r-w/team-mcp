@@ -215,10 +215,8 @@ func TestBoardStoreCreateMessageFailureDoesNotExposeHalfCreatedMessage(t *testin
 
 	messageLookupDir := filepath.Join(rootDir, boardMessageLookupDirName)
 	require.NoError(t, os.RemoveAll(messageLookupDir))
-	require.NoError(t, os.WriteFile(messageLookupDir, []byte("blocked"), filePermission))
 	t.Cleanup(func() {
-		_ = os.Remove(messageLookupDir)
-		_ = os.Mkdir(messageLookupDir, directoryPermission)
+		_ = os.MkdirAll(messageLookupDir, directoryPermission)
 	})
 
 	_, _, _, err := store.CreateMessage(
@@ -230,8 +228,7 @@ func TestBoardStoreCreateMessageFailureDoesNotExposeHalfCreatedMessage(t *testin
 	)
 	require.Error(t, err)
 
-	require.NoError(t, os.Remove(messageLookupDir))
-	require.NoError(t, os.Mkdir(messageLookupDir, directoryPermission))
+	require.NoError(t, os.MkdirAll(messageLookupDir, directoryPermission))
 
 	reopenedStore, err := NewBoardStore(rootDir)
 	require.NoError(t, err)
