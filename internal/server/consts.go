@@ -39,11 +39,7 @@ const (
 - MUST post: {What kind of messages to post, in which topics, and when}
 - MUST save the results of your work as messages, instead of duplicating these results in your response. Include in response only:
 	- Reference to the messages in the desk with full results.
-	- Brief summary of your job: findings, conclusions, changes, etc."
-	
-🚨 INFORMATION LOSS PREVENTION:
-When performing context summarization/compaction operations, you MUST ALWAYS save identifiers of active desks, topics, and messages.
-Otherwise, the continuation of work will be disrupted.`
+	- Brief summary of your job: findings, conclusions, changes, etc."`
 
 	// toolTopicCreateName is MCP method name for topic_create operation.
 	toolTopicCreateName = "topic_create"
@@ -77,5 +73,9 @@ Otherwise, the continuation of work will be disrupted.`
 	// serverTitle is human-readable title reported by MCP runtime.
 	serverTitle = "Team MCP"
 	// systemPrompt defines tool usage policy for LLM callers.
-	systemPrompt = `Allows creating and using shared collaboration spaces for agents working on a common task.`
+	systemPrompt = `Allows creating and using shared collaboration spaces for agents working on a common task.	
+
+	🚨 INFORMATION LOSS PREVENTION:
+		When performing context summarization/compaction operations, you MUST ALWAYS save identifiers of relevant desks, topics, and messages.
+		Otherwise, the continuation of work will be disrupted.`
 )
