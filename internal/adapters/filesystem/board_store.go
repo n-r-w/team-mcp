@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,19 +45,65 @@ func ValidateRuntimeMessageDir(rootDir string) error {
 	}
 
 	rootInfo, err := os.Stat(cleanRootDir)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
-	if !rootInfo.IsDir() {
+	if err == nil && !rootInfo.IsDir() {
 		return errors.New("message directory must point to a directory")
 	}
 
+	return validateImmutablePublishSupport(cleanRootDir)
+}
+
+// validateImmutablePublishSupport verifies the selected storage root can publish
+// immutable files with the same filesystem semantics used at runtime.
+func validateImmutablePublishSupport(rootDir string) error {
+	probeBaseDir, resolveErr := nearestExistingDirectory(rootDir)
+	if resolveErr != nil {
+		return resolveErr
+	}
+
+	probeDir := filepath.Join(probeBaseDir, ".team-mcp-probe-"+uuid.NewString())
+	if mkdirErr := os.Mkdir(probeDir, directoryPermission); mkdirErr != nil {
+		return mkdirErr
+	}
+	defer func() {
+		_ = os.RemoveAll(probeDir)
+	}()
+
+	probePath := filepath.Join(probeDir, "probe"+boardJSONExtension)
+	if publishErr := writeBytesExclusive(probePath, []byte("{}")); publishErr != nil {
+		return fmt.Errorf("message directory must support immutable file publication: %w", publishErr)
+	}
+
 	return nil
+}
+
+// nearestExistingDirectory resolves the directory whose filesystem semantics the runtime root will inherit.
+func nearestExistingDirectory(path string) (string, error) {
+	probeDir := path
+	for {
+		info, err := os.Stat(probeDir)
+		if err == nil {
+			if !info.IsDir() {
+				return "", errors.New("message directory must point to a directory")
+			}
+
+			return probeDir, nil
+		}
+
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+
+		parentDir := filepath.Dir(probeDir)
+		if parentDir == probeDir {
+			return "", err
+		}
+
+		probeDir = parentDir
+	}
 }
 
 // CreateDesk persists a new desk and its creation timestamp.
@@ -672,7 +719,8 @@ func (s *BoardStore) refreshTopicMirror(ctx context.Context, deskID, topicID str
 	}
 }
 
-// cleanupOlderVersionSnapshots keeps only the newest authoritative snapshot so retry checks stay cheap.
+// cleanupOlderVersionSnapshots removes snapshots older than the just-committed version.
+// Newer versions must survive because a stale concurrent cleanup may finish late.
 func (s *BoardStore) cleanupOlderVersionSnapshots(ctx context.Context, versionsDir string, version int64) {
 	entries, err := os.ReadDir(versionsDir)
 	if err != nil {
@@ -683,9 +731,13 @@ func (s *BoardStore) cleanupOlderVersionSnapshots(ctx context.Context, versionsD
 		return
 	}
 
-	keepFileName := boardVersionFileName(version)
 	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == keepFileName {
+		if entry.IsDir() {
+			continue
+		}
+
+		snapshotVersion, ok := parseBoardVersionFileName(entry.Name())
+		if !ok || snapshotVersion >= version {
 			continue
 		}
 
@@ -981,28 +1033,51 @@ func writeJSONExclusive(path string, value any) error {
 	return writeBytesExclusive(path, payload)
 }
 
-// writeBytesExclusive writes one immutable file used for snapshots, payloads, and direct lookup records.
+// writeBytesExclusive publishes one immutable file only after the full payload is written to a hidden temp file.
+// The final path appears via a same-directory hard link so readers never observe partial contents.
 func writeBytesExclusive(path string, payload []byte) error {
-	file, err := openFileExclusive(path, filePermission)
+	tempPath, err := writeImmutableTempFile(path, payload)
 	if err != nil {
 		return err
 	}
 
-	_, writeErr := file.Write(payload)
-	closeErr := file.Close()
-	if writeErr != nil {
-		_ = os.Remove(path)
+	if publishErr := publishImmutableTempFile(tempPath, path); publishErr != nil {
+		_ = cleanupImmutableTempFile(tempPath)
 
-		return writeErr
+		return publishErr
 	}
 
-	if closeErr != nil {
-		_ = os.Remove(path)
-
-		return closeErr
+	if cleanupErr := cleanupImmutableTempFile(tempPath); cleanupErr != nil {
+		slog.Warn("failed to remove temporary immutable file", "path", tempPath, "error", cleanupErr)
 	}
 
 	return nil
+}
+
+// writeImmutableTempFile persists the hidden temp artifact that later becomes the immutable final file.
+func writeImmutableTempFile(path string, payload []byte) (string, error) {
+	tempPath := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".tmp-"+uuid.NewString())
+	if err := os.WriteFile(tempPath, payload, filePermission); err != nil {
+		_ = removeIfExists(tempPath)
+
+		return "", err
+	}
+
+	return tempPath, nil
+}
+
+// publishImmutableTempFile makes the completed temp artifact visible at its final immutable path.
+func publishImmutableTempFile(tempPath, path string) error {
+	if err := os.Link(tempPath, path); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// cleanupImmutableTempFile removes the hidden temp artifact after publication or a failed publish attempt.
+func cleanupImmutableTempFile(tempPath string) error {
+	return removeIfExists(tempPath)
 }
 
 // writeJSONMirror refreshes a readable mirror file using same-directory temp-file replacement.
@@ -1053,31 +1128,24 @@ func readFile(path string) ([]byte, error) {
 	return payload, nil
 }
 
-// openFileExclusive creates one new file inside a controlled directory and rejects overwrites.
-func openFileExclusive(path string, mode os.FileMode) (*os.File, error) {
-	root, err := os.OpenRoot(filepath.Dir(path))
-	if err != nil {
-		return nil, err
-	}
-
-	file, openErr := root.OpenFile(filepath.Base(path), os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
-	closeErr := root.Close()
-	if openErr != nil {
-		return nil, openErr
-	}
-
-	if closeErr != nil {
-		_ = file.Close()
-
-		return nil, closeErr
-	}
-
-	return file, nil
-}
-
 // boardVersionFileName keeps snapshot ordering lexicographically sortable for cheap latest-version resolution.
 func boardVersionFileName(version int64) string {
 	return fmt.Sprintf("%020d%s", version, boardJSONExtension)
+}
+
+// parseBoardVersionFileName extracts the numeric snapshot version from committed version filenames.
+func parseBoardVersionFileName(name string) (int64, bool) {
+	if filepath.Ext(name) != boardJSONExtension {
+		return 0, false
+	}
+
+	versionText := strings.TrimSuffix(name, boardJSONExtension)
+	version, err := strconv.ParseInt(versionText, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+
+	return version, true
 }
 
 // isReservedBoardDir filters lookup directories out of desk TTL scans.
