@@ -7,14 +7,14 @@ const (
 	// toolDeskCreateDesc explains desk_create behavior to LLM tool consumers.
 	toolDeskCreateDesc = `Creates a collaboration desk for agents and returns desk_id.
 
-HOW TO USE:
+🚨 HOW TO USE:
 1. Design the most effective set of subagents to solve the task.
 2. Call desk_create to create a new desk and obtain its desk_id.
 3. Call topic_create to create topics within the desk for different discussion threads or coordination needs.
 4. Coordinate subagent's interactions through the shared desk.
 5. If you start a new task, create a new desk to avoid mixing communication.
 
-CRITICAL RULES:
+🚨 CRITICAL RULES:
 1. Collaboration desk is the MAIN communication channel for subagents.
 2. MUST NEVER execute subagent without "SUBAGENT PROMPT TEMPLATE"!
 3. MUST NEVER bypass the desk in communication! E.g.:
@@ -31,7 +31,7 @@ CRITICAL RULES:
 	- Does it contain: references to knowledge that only you have in context and subagents don't; references to identifiers without specifying which document or file they relate to? If yes - replace with specific knowledge or links to documents/files.
 8. CRITICAL: NEVER run subagents in parallel, that depend on each other messages. REMEMBER: Subagents CANNOT WAIT for each other's messages!
 
-SUBAGENT PROMPT TEMPLATE. MUST include in EACH subagent's prompt AS-IS:
+🚨 SUBAGENT PROMPT TEMPLATE. MUST include in EACH subagent's prompt AS-IS:
 "Collaboration protocol:
 - You have access to a shared collaboration desk with desk_id: {desk_id}. Use this desk to coordinate your job with other agents.
 - Topics to use: {List of relevant topics IDs and their purposes}.
@@ -39,7 +39,11 @@ SUBAGENT PROMPT TEMPLATE. MUST include in EACH subagent's prompt AS-IS:
 - MUST post: {What kind of messages to post, in which topics, and when}
 - MUST save the results of your work as messages, instead of duplicating these results in your response. Include in response only:
 	- Reference to the messages in the desk with full results.
-	- Brief summary of your job: findings, conclusions, changes, etc."`
+	- Brief summary of your job: findings, conclusions, changes, etc."
+	
+🚨 INFORMATION LOSS PREVENTION:
+When performing context summarization/compaction operations, you MUST ALWAYS save identifiers of active desks, topics, and messages.
+Otherwise, the continuation of work will be disrupted.`
 
 	// toolTopicCreateName is MCP method name for topic_create operation.
 	toolTopicCreateName = "topic_create"
