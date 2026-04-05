@@ -90,9 +90,9 @@ func (mr *MockIBoardStoreMockRecorder) CreateMessage(ctx, topicID, title, normal
 }
 
 // CreateTopic mocks base method.
-func (m *MockIBoardStore) CreateTopic(ctx context.Context, deskID, title string) (domain.TopicHeader, domain.BusinessStatus, bool, error) {
+func (m *MockIBoardStore) CreateTopic(ctx context.Context, deskID, title, normalizedTitle string) (domain.TopicHeader, domain.BusinessStatus, bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateTopic", ctx, deskID, title)
+	ret := m.ctrl.Call(m, "CreateTopic", ctx, deskID, title, normalizedTitle)
 	ret0, _ := ret[0].(domain.TopicHeader)
 	ret1, _ := ret[1].(domain.BusinessStatus)
 	ret2, _ := ret[2].(bool)
@@ -101,9 +101,9 @@ func (m *MockIBoardStore) CreateTopic(ctx context.Context, deskID, title string)
 }
 
 // CreateTopic indicates an expected call of CreateTopic.
-func (mr *MockIBoardStoreMockRecorder) CreateTopic(ctx, deskID, title any) *gomock.Call {
+func (mr *MockIBoardStoreMockRecorder) CreateTopic(ctx, deskID, title, normalizedTitle any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTopic", reflect.TypeOf((*MockIBoardStore)(nil).CreateTopic), ctx, deskID, title)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTopic", reflect.TypeOf((*MockIBoardStore)(nil).CreateTopic), ctx, deskID, title, normalizedTitle)
 }
 
 // DeleteDesk mocks base method.

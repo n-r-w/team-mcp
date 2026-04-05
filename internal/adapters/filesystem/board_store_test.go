@@ -77,17 +77,22 @@ func TestBoardStoreCreateTopicPersistsOrderAndDedupe(t *testing.T) {
 	store, rootDir := newBoardStoreForTest(t)
 	deskID := mustCreateDesk(t, store, time.Now().UTC())
 
-	firstHeader, firstStatus, firstCreated, err := store.CreateTopic(ctx, deskID, "Alpha")
+	firstHeader, firstStatus, firstCreated, err := store.CreateTopic(ctx, deskID, "Alpha", normalizeTitleForTest("Alpha"))
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusOK, firstStatus)
 	require.True(t, firstCreated)
 
-	secondHeader, secondStatus, secondCreated, err := store.CreateTopic(ctx, deskID, "Beta")
+	secondHeader, secondStatus, secondCreated, err := store.CreateTopic(ctx, deskID, "Beta", normalizeTitleForTest("Beta"))
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusOK, secondStatus)
 	require.True(t, secondCreated)
 
-	duplicateHeader, duplicateStatus, duplicateCreated, err := store.CreateTopic(ctx, deskID, "Alpha")
+	duplicateHeader, duplicateStatus, duplicateCreated, err := store.CreateTopic(
+		ctx,
+		deskID,
+		"  ALPHA\t\n",
+		normalizeTitleForTest("  ALPHA\t\n"),
+	)
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusOK, duplicateStatus)
 	require.False(t, duplicateCreated)
@@ -592,14 +597,19 @@ func TestBoardStoreCreateTopicRetriesOnVersionConflict(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			header, status, created, createErr := store.CreateTopic(ctx, deskID, "Shared")
+			header, status, created, createErr := store.CreateTopic(ctx, deskID, "Shared", normalizeTitleForTest("Shared"))
 			results <- topicCreateOutcome{Header: header, Status: status, Created: created, Err: createErr}
 		}()
 
 		go func() {
 			defer wg.Done()
 			<-start
-			header, status, created, createErr := secondStore.CreateTopic(ctx, deskID, "Shared")
+			header, status, created, createErr := secondStore.CreateTopic(
+				ctx,
+				deskID,
+				"Shared",
+				normalizeTitleForTest("Shared"),
+			)
 			results <- topicCreateOutcome{Header: header, Status: status, Created: created, Err: createErr}
 		}()
 
@@ -833,7 +843,7 @@ func mustCreateDesk(t *testing.T, store *BoardStore, createdAt time.Time) string
 func mustCreateTopic(t *testing.T, store *BoardStore, deskID string, title string) string {
 	t.Helper()
 
-	header, status, created, err := store.CreateTopic(t.Context(), deskID, title)
+	header, status, created, err := store.CreateTopic(t.Context(), deskID, title, normalizeTitleForTest(title))
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusOK, status)
 	require.True(t, created)

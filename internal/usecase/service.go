@@ -52,7 +52,8 @@ func (s *Service) TopicCreate(
 		return domain.TopicCreateResult{}, err
 	}
 
-	header, status, _, err := s.boardStore.CreateTopic(ctx, request.DeskID, request.Title)
+	normalizedTitle := normalizeTitle(request.Title)
+	header, status, _, err := s.boardStore.CreateTopic(ctx, request.DeskID, request.Title, normalizedTitle)
 	if err != nil {
 		return domain.TopicCreateResult{}, fmt.Errorf("create topic: %w", err)
 	}
@@ -90,7 +91,7 @@ func (s *Service) MessageCreate(
 		return domain.MessageCreateResult{}, err
 	}
 
-	normalizedTitle := normalizeMessageTitle(request.Title)
+	normalizedTitle := normalizeTitle(request.Title)
 	meta, status, existingMessageID, err := s.boardStore.CreateMessage(
 		ctx,
 		request.TopicID,
@@ -307,8 +308,8 @@ func utf8Len(value string) int {
 	return len([]rune(value))
 }
 
-// normalizeMessageTitle lowercases title and strips all whitespace for duplicate detection.
-func normalizeMessageTitle(title string) string {
+// normalizeTitle lowercases title and strips all whitespace for duplicate detection.
+func normalizeTitle(title string) string {
 	lowerTitle := strings.ToLower(title)
 
 	return strings.Map(func(r rune) rune {

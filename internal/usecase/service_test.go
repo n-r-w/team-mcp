@@ -104,10 +104,11 @@ func TestTopicCreateSuccess(t *testing.T) {
 	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
 
 	ctx := t.Context()
+	title := "  TOPIC\t\n"
 	header := domain.TopicHeader{TopicID: "topic-1", Title: "Topic"}
-	boardStore.EXPECT().CreateTopic(ctx, "desk-1", "Topic").Return(header, domain.BusinessStatusOK, true, nil)
+	boardStore.EXPECT().CreateTopic(ctx, "desk-1", title, "topic").Return(header, domain.BusinessStatusOK, true, nil)
 
-	result, err := service.TopicCreate(ctx, domain.TopicCreateRequest{DeskID: "desk-1", Title: "Topic"})
+	result, err := service.TopicCreate(ctx, domain.TopicCreateRequest{DeskID: "desk-1", Title: title})
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusOK, result.Status)
 	require.Equal(t, "topic-1", result.TopicID)

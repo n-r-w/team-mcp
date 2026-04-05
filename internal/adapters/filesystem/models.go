@@ -4,10 +4,10 @@ import "github.com/n-r-w/team-mcp/internal/domain"
 
 // boardDeskState keeps authoritative desk metadata that drives topic ordering and TTL scanning.
 type boardDeskState struct {
-	Version      int64                `json:"version"`
-	CreatedAt    int64                `json:"created_at"`
-	Topics       []domain.TopicHeader `json:"topics"`
-	TopicByTitle map[string]string    `json:"topic_by_title"`
+	Version                int64                `json:"version"`
+	CreatedAt              int64                `json:"created_at"`
+	Topics                 []domain.TopicHeader `json:"topics"`
+	TopicByNormalizedTitle map[string]string    `json:"topic_by_normalized_title"`
 }
 
 // boardTopicState keeps authoritative topic metadata that drives message ordering and dedupe.

@@ -118,10 +118,10 @@ func (s *BoardStore) CreateDesk(ctx context.Context, createdAt time.Time) (strin
 	}
 
 	state := boardDeskState{
-		Version:      1,
-		CreatedAt:    createdAt.UTC().UnixNano(),
-		Topics:       []domain.TopicHeader{},
-		TopicByTitle: map[string]string{},
+		Version:                1,
+		CreatedAt:              createdAt.UTC().UnixNano(),
+		Topics:                 []domain.TopicHeader{},
+		TopicByNormalizedTitle: map[string]string{},
 	}
 
 	if err := s.writeVersionSnapshot(s.deskVersionsDir(deskID), state.Version, state); err != nil {
@@ -134,11 +134,12 @@ func (s *BoardStore) CreateDesk(ctx context.Context, createdAt time.Time) (strin
 	return deskID, nil
 }
 
-// CreateTopic persists a topic in desk order and dedupes by exact title.
+// CreateTopic persists a topic in desk order and dedupes by normalized title.
 func (s *BoardStore) CreateTopic(
 	ctx context.Context,
 	deskID string,
 	title string,
+	normalizedTitle string,
 ) (domain.TopicHeader, domain.BusinessStatus, bool, error) {
 	if err := validateLocalID("desk ID", deskID); err != nil {
 		return emptyTopicHeader(), "", false, err
@@ -158,7 +159,7 @@ func (s *BoardStore) CreateTopic(
 			return emptyTopicHeader(), domain.BusinessStatusNotFound, false, nil
 		}
 
-		if existingTopicID, exists := deskState.TopicByTitle[title]; exists {
+		if existingTopicID, exists := deskState.TopicByNormalizedTitle[normalizedTitle]; exists {
 			return domain.TopicHeader{TopicID: existingTopicID, Title: title}, domain.BusinessStatusOK, false, nil
 		}
 
@@ -183,7 +184,7 @@ func (s *BoardStore) CreateTopic(
 		nextDeskState := cloneDeskState(deskState)
 		nextDeskState.Version = deskState.Version + 1
 		nextDeskState.Topics = append(nextDeskState.Topics, header)
-		nextDeskState.TopicByTitle[title] = topicID
+		nextDeskState.TopicByNormalizedTitle[normalizedTitle] = topicID
 
 		commitErr := s.commitDeskState(ctx, deskID, nextDeskState)
 		if errors.Is(commitErr, errBoardVersionConflict) {
@@ -846,10 +847,10 @@ func (s *BoardStore) writeVersionSnapshot(versionsDir string, version int64, val
 // cloneDeskState protects loaded desk metadata from accidental in-place mutation across retries.
 func cloneDeskState(state boardDeskState) boardDeskState {
 	return boardDeskState{
-		Version:      state.Version,
-		CreatedAt:    state.CreatedAt,
-		Topics:       copyTopicHeaders(state.Topics),
-		TopicByTitle: copyStringMap(state.TopicByTitle),
+		Version:                state.Version,
+		CreatedAt:              state.CreatedAt,
+		Topics:                 copyTopicHeaders(state.Topics),
+		TopicByNormalizedTitle: copyStringMap(state.TopicByNormalizedTitle),
 	}
 }
 

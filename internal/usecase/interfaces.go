@@ -14,7 +14,12 @@ type IBoardStore interface {
 	// CreateDesk creates desk metadata record and returns desk identifier.
 	CreateDesk(ctx context.Context, createdAt time.Time) (string, error)
 	// CreateTopic creates topic under desk or returns existing topic in idempotent case.
-	CreateTopic(ctx context.Context, deskID string, title string) (domain.TopicHeader, domain.BusinessStatus, bool, error)
+	CreateTopic(
+		ctx context.Context,
+		deskID string,
+		title string,
+		normalizedTitle string,
+	) (domain.TopicHeader, domain.BusinessStatus, bool, error)
 	// ListTopics returns ordered topic headers for desk or reports that the desk is missing.
 	ListTopics(ctx context.Context, deskID string) ([]domain.TopicHeader, bool, error)
 	// CreateMessage creates message metadata and payload or returns duplicate/not-found business status.
