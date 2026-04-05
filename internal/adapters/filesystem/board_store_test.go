@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,17 @@ func TestValidateRuntimeMessageDirAllowsExistingBoardState(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestValidateRuntimeMessageDirAllowsNewRoot verifies runtime startup also accepts a not-yet-created storage root.
+func TestValidateRuntimeMessageDirAllowsNewRoot(t *testing.T) {
+	t.Parallel()
+
+	rootDir := filepath.Join(t.TempDir(), "messages")
+	err := ValidateRuntimeMessageDir(rootDir)
+	require.NoError(t, err)
+	_, statErr := os.Stat(rootDir)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
 // TestBoardStoreCreateTopicPersistsOrderAndDedupe verifies desk metadata owns topic titles and order on disk.
 func TestBoardStoreCreateTopicPersistsOrderAndDedupe(t *testing.T) {
 	t.Parallel()
@@ -65,17 +77,22 @@ func TestBoardStoreCreateTopicPersistsOrderAndDedupe(t *testing.T) {
 	store, rootDir := newBoardStoreForTest(t)
 	deskID := mustCreateDesk(t, store, time.Now().UTC())
 
-	firstHeader, firstStatus, firstCreated, err := store.CreateTopic(ctx, deskID, "Alpha")
+	firstHeader, firstStatus, firstCreated, err := store.CreateTopic(ctx, deskID, "Alpha", normalizeTitleForTest("Alpha"))
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusOK, firstStatus)
 	require.True(t, firstCreated)
 
-	secondHeader, secondStatus, secondCreated, err := store.CreateTopic(ctx, deskID, "Beta")
+	secondHeader, secondStatus, secondCreated, err := store.CreateTopic(ctx, deskID, "Beta", normalizeTitleForTest("Beta"))
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusOK, secondStatus)
 	require.True(t, secondCreated)
 
-	duplicateHeader, duplicateStatus, duplicateCreated, err := store.CreateTopic(ctx, deskID, "Alpha")
+	duplicateHeader, duplicateStatus, duplicateCreated, err := store.CreateTopic(
+		ctx,
+		deskID,
+		"  ALPHA\t\n",
+		normalizeTitleForTest("  ALPHA\t\n"),
+	)
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusOK, duplicateStatus)
 	require.False(t, duplicateCreated)
@@ -410,6 +427,115 @@ func TestBoardStoreCommitTopicStateDoesNotRecreateDeletedDesk(t *testing.T) {
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
+// TestBoardStoreCleanupOlderVersionSnapshotsKeepsNewerCommittedVersions verifies a stale cleanup pass cannot delete a newer committed snapshot.
+func TestBoardStoreCleanupOlderVersionSnapshotsKeepsNewerCommittedVersions(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	topicID := mustCreateTopic(t, store, deskID, "Topic")
+	topicState, found, err := store.loadTopicState(deskID, topicID)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	secondVersionState := cloneTopicState(topicState)
+	secondVersionState.Version = topicState.Version + 1
+	secondVersionState.Messages = append(secondVersionState.Messages, domain.MessageHeader{MessageID: "message-2", Title: "Second"})
+	secondVersionState.MessageByNormalizedTitle[normalizeTitleForTest("Second")] = "message-2"
+	require.NoError(t, store.writeVersionSnapshot(store.topicVersionsDir(deskID, topicID), secondVersionState.Version, secondVersionState))
+
+	thirdVersionState := cloneTopicState(secondVersionState)
+	thirdVersionState.Version = secondVersionState.Version + 1
+	thirdVersionState.Messages = append(thirdVersionState.Messages, domain.MessageHeader{MessageID: "message-3", Title: "Third"})
+	thirdVersionState.MessageByNormalizedTitle[normalizeTitleForTest("Third")] = "message-3"
+	require.NoError(t, store.writeVersionSnapshot(store.topicVersionsDir(deskID, topicID), thirdVersionState.Version, thirdVersionState))
+
+	store.cleanupOlderVersionSnapshots(t.Context(), store.topicVersionsDir(deskID, topicID), secondVersionState.Version)
+
+	_, firstVersionErr := os.Stat(filepath.Join(store.topicVersionsDir(deskID, topicID), boardVersionFileName(topicState.Version)))
+	require.ErrorIs(t, firstVersionErr, os.ErrNotExist)
+	_, secondVersionErr := os.Stat(filepath.Join(store.topicVersionsDir(deskID, topicID), boardVersionFileName(secondVersionState.Version)))
+	require.NoError(t, secondVersionErr)
+	_, thirdVersionErr := os.Stat(filepath.Join(store.topicVersionsDir(deskID, topicID), boardVersionFileName(thirdVersionState.Version)))
+	require.NoError(t, thirdVersionErr)
+}
+
+// TestWriteVersionSnapshotPublishesOnlyCompleteSnapshots verifies readers never observe malformed snapshot JSON while a new snapshot is being published.
+func TestWriteVersionSnapshotPublishesOnlyCompleteSnapshots(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		store, _ := newBoardStoreForTest(t)
+		deskID := mustCreateDesk(t, store, time.Now().UTC())
+		topicID := mustCreateTopic(t, store, deskID, "Topic")
+		topicState, found, err := store.loadTopicState(deskID, topicID)
+		require.NoError(t, err)
+		require.True(t, found)
+
+		largeTopicState := buildLargeTopicState(topicState)
+
+		versionsDir := store.topicVersionsDir(deskID, topicID)
+		snapshotPath := filepath.Join(versionsDir, boardVersionFileName(largeTopicState.Version))
+		tempPath := filepath.Join(versionsDir, "."+filepath.Base(snapshotPath)+".temp-test")
+		require.NoError(t, writeJSONMirror(tempPath, largeTopicState))
+		t.Cleanup(func() {
+			_ = cleanupImmutableTempFile(tempPath)
+			_ = removeIfExists(snapshotPath)
+		})
+
+		latestState, latestFound, latestErr := readLatestVersionFile[boardTopicState](versionsDir)
+		require.NoError(t, latestErr)
+		require.True(t, latestFound)
+		require.Equal(t, topicState.Version, latestState.Version)
+
+		require.NoError(t, publishImmutableTempFile(tempPath, snapshotPath))
+		require.NoError(t, cleanupImmutableTempFile(tempPath))
+
+		latestState, latestFound, latestErr = readLatestVersionFile[boardTopicState](versionsDir)
+		require.NoError(t, latestErr)
+		require.True(t, latestFound)
+		require.Equal(t, largeTopicState.Version, latestState.Version)
+	})
+}
+
+// TestWriteVersionSnapshotProductionPathPublishesOnlyCompleteSnapshots verifies the real snapshot write path never exposes malformed snapshots to concurrent readers.
+func TestWriteVersionSnapshotProductionPathPublishesOnlyCompleteSnapshots(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newBoardStoreForTest(t)
+	deskID := mustCreateDesk(t, store, time.Now().UTC())
+	topicID := mustCreateTopic(t, store, deskID, "Topic")
+	topicState, found, err := store.loadTopicState(deskID, topicID)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	largeTopicState := buildLargeTopicState(topicState)
+	versionsDir := store.topicVersionsDir(deskID, topicID)
+	writeErrs := make(chan error, 1)
+	go func() {
+		writeErrs <- store.writeVersionSnapshot(versionsDir, largeTopicState.Version, largeTopicState)
+	}()
+
+	for {
+		select {
+		case writeErr := <-writeErrs:
+			require.NoError(t, writeErr)
+			latestState, latestFound, latestErr := readLatestVersionFile[boardTopicState](versionsDir)
+			require.NoError(t, latestErr)
+			require.True(t, latestFound)
+			require.Equal(t, largeTopicState.Version, latestState.Version)
+
+			return
+		default:
+			latestState, latestFound, latestErr := readLatestVersionFile[boardTopicState](versionsDir)
+			require.NoError(t, latestErr)
+			if latestFound {
+				require.LessOrEqual(t, latestState.Version, largeTopicState.Version)
+			}
+		}
+	}
+}
+
 // TestBoardStoreDeleteDeskIsIdempotent verifies cleanup can safely race and removes visible desk state.
 func TestBoardStoreDeleteDeskIsIdempotent(t *testing.T) {
 	t.Parallel()
@@ -471,14 +597,19 @@ func TestBoardStoreCreateTopicRetriesOnVersionConflict(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			header, status, created, createErr := store.CreateTopic(ctx, deskID, "Shared")
+			header, status, created, createErr := store.CreateTopic(ctx, deskID, "Shared", normalizeTitleForTest("Shared"))
 			results <- topicCreateOutcome{Header: header, Status: status, Created: created, Err: createErr}
 		}()
 
 		go func() {
 			defer wg.Done()
 			<-start
-			header, status, created, createErr := secondStore.CreateTopic(ctx, deskID, "Shared")
+			header, status, created, createErr := secondStore.CreateTopic(
+				ctx,
+				deskID,
+				"Shared",
+				normalizeTitleForTest("Shared"),
+			)
 			results <- topicCreateOutcome{Header: header, Status: status, Created: created, Err: createErr}
 		}()
 
@@ -712,7 +843,7 @@ func mustCreateDesk(t *testing.T, store *BoardStore, createdAt time.Time) string
 func mustCreateTopic(t *testing.T, store *BoardStore, deskID string, title string) string {
 	t.Helper()
 
-	header, status, created, err := store.CreateTopic(t.Context(), deskID, title)
+	header, status, created, err := store.CreateTopic(t.Context(), deskID, title, normalizeTitleForTest(title))
 	require.NoError(t, err)
 	require.Equal(t, domain.BusinessStatusOK, status)
 	require.True(t, created)
@@ -732,4 +863,18 @@ func normalizeTitleForTest(title string) string {
 
 		return r
 	}, lowerTitle)
+}
+
+// buildLargeTopicState expands one topic snapshot so publication tests have a meaningful payload size.
+func buildLargeTopicState(topicState boardTopicState) boardTopicState {
+	largeTopicState := cloneTopicState(topicState)
+	largeTopicState.Version = topicState.Version + 1
+	for i := range 4000 {
+		messageID := fmt.Sprintf("message-%04d", i)
+		title := fmt.Sprintf("Title %04d %s", i, strings.Repeat("payload", 16))
+		largeTopicState.Messages = append(largeTopicState.Messages, domain.MessageHeader{MessageID: messageID, Title: title})
+		largeTopicState.MessageByNormalizedTitle[normalizeTitleForTest(title)] = messageID
+	}
+
+	return largeTopicState
 }
