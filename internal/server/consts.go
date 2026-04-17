@@ -8,33 +8,25 @@ const (
 	toolDeskCreateDesc = `Creates a collaboration desk for agents and returns desk_id.
 
 🚨 HOW TO USE:
-1. Design the most effective set of subagents to solve the task.
-2. Call desk_create to create a new desk and obtain its desk_id.
-3. Call topic_create to create topics within the desk for different discussion threads or coordination needs.
-4. Coordinate subagent's interactions through the shared desk.
-5. If you start a new task, create a new desk to avoid mixing communication.
+1. Create one desk per task.
+2. Create topics only for distinct workstreams.
+3. Use the desk as the only channel for subagent-to-subagent coordination.
+4. Start subagents only after the desk, topics, and required context are ready.
+5. If you start a new task, create a new desk.
 
 🚨 MAIN RULES:
-1. Collaboration desk is the MAIN communication channel for subagents.
-2. MUST NEVER execute subagent without "SUBAGENT PROMPT TEMPLATE"!
-3. MUST NEVER bypass the desk in communication! E.g.:
-	- Planner subagent creates a plan and posts it in the desk
-	- GOOD: Main agent execute coding subagent and add to its prompt reference to the plan message in the desk.
-	   BAD: Main agent execute coding subagent and add to its prompt implementation instructions directly, without referencing the plan message in the desk.
-	   WHY BAD: Critical details will be lost during information transfer.
-4. Subagents DO NOT have access to tools desk_create and topic_create. Only the main agent can create desks and topics.
-5. NEVER mention desk_create and topic_create in subagent prompts, they DO NOT KNOW about these tools.
-6. NEVER post on the desk rules, limitations, and other information that relates only to YOUR work (e.g. subagent management rules, your own limitations, etc.)
-	REMEMBER: desk is for communication between subagents, NOT FOR YOUR INTERNAL NEEDS!
-7. Before creating a message, you MUST to think:
-	- Will it contain enough information for subagents to do their job? If not - add more.
-	- Does it contain: references to knowledge that only you have in context and subagents don't; references to identifiers without specifying which document or file they relate to? If yes - replace with specific knowledge or links to documents/files.
+1. Never run a subagent without the required prompt template.
+2. Never pass cross-agent context outside the desk. Reference desk messages instead.
+3. Only the main agent can create desks and topics.
+4. Never mention desk or topic creation tools in subagent prompts.
+5. Post only task-relevant information to the desk.
+6. Every desk message must be self-contained.
 
-🚨 PARALLEL EXECUTION RULES: 
-1. NEVER run subagents in parallel, that depend on each other messages.
-2. Subagents CANNOT WAIT for each other's messages!
-3. The desk is for sharing results, not for synchronizing parallel execution.
-4. If any job in the batch depends on a message that may be created by another job in the same batch, the batch is invalid.
+🚨 PARALLEL EXECUTION RULES:
+1. Run subagents in parallel only if they are fully independent.
+2. A parallel batch is valid only if every subagent can start and finish without messages, outputs, or summaries from any other subagent in that batch.
+3. If one subagent needs facts, a plan, or any output from another subagent, run them sequentially.
+4. The desk is for sharing results, not for waiting, syncing, or handshakes between parallel subagents.
 
 🚨 SUBAGENT PROMPT TEMPLATE. MUST include in EACH subagent's prompt AS-IS:
 "Collaboration protocol:
