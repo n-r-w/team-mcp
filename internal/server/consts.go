@@ -14,7 +14,7 @@ const (
 4. Coordinate subagent's interactions through the shared desk.
 5. If you start a new task, create a new desk to avoid mixing communication.
 
-🚨 CRITICAL RULES:
+🚨 MAIN RULES:
 1. Collaboration desk is the MAIN communication channel for subagents.
 2. MUST NEVER execute subagent without "SUBAGENT PROMPT TEMPLATE"!
 3. MUST NEVER bypass the desk in communication! E.g.:
@@ -29,7 +29,12 @@ const (
 7. Before creating a message, you MUST to think:
 	- Will it contain enough information for subagents to do their job? If not - add more.
 	- Does it contain: references to knowledge that only you have in context and subagents don't; references to identifiers without specifying which document or file they relate to? If yes - replace with specific knowledge or links to documents/files.
-8. CRITICAL: NEVER run subagents in parallel, that depend on each other messages. REMEMBER: Subagents CANNOT WAIT for each other's messages!
+
+🚨 PARALLEL EXECUTION RULES: 
+1. NEVER run subagents in parallel, that depend on each other messages.
+2. Subagents CANNOT WAIT for each other's messages!
+3. The desk is for sharing results, not for synchronizing parallel execution.
+4. If any job in the batch depends on a message that may be created by another job in the same batch, the batch is invalid.
 
 🚨 SUBAGENT PROMPT TEMPLATE. MUST include in EACH subagent's prompt AS-IS:
 "Collaboration protocol:
