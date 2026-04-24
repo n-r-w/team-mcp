@@ -21,6 +21,7 @@ const (
 4. Never mention desk or topic creation tools in subagent prompts.
 5. Post only task-relevant information to the desk.
 6. Every desk message must be self-contained.
+7. Users DO NOT SEE desk contents, even when IDs are provided.
 
 🚨 PARALLEL EXECUTION RULES:
 1. Run subagents in parallel only if they are fully independent.
