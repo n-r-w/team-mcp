@@ -41,9 +41,10 @@ type topicHeaderDTO struct {
 
 // messageCreateInput is MCP input DTO for message_create tool.
 type messageCreateInput struct {
-	TopicID string `json:"topic_id" jsonschema:"topic identifier. required"`
-	Title   string `json:"title" jsonschema:"message title. required"`
-	Content string `json:"content" jsonschema:"message markdown content. required"`
+	TopicID  string  `json:"topic_id" jsonschema:"topic identifier. required"`
+	Title    string  `json:"title" jsonschema:"message title. required"`
+	Content  *string `json:"content,omitempty" jsonschema:"message text; mutually exclusive with file_path"`
+	FilePath *string `json:"file_path,omitempty" jsonschema:"absolute .txt or .md path; mutually exclusive with content"`
 }
 
 // messageCreateOutput is MCP output DTO for message_create tool.

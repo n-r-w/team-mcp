@@ -51,8 +51,9 @@ const (
 
 	// toolMessageCreateName is MCP method name for message_create operation.
 	toolMessageCreateName = "message_create"
-	// toolMessageCreateDesc explains duplicate-title semantics for message_create.
+	// toolMessageCreateDesc explains content-source and duplicate-title semantics for message_create.
 	toolMessageCreateDesc = "Creates new message in topic and returns message_id. " +
+		"Provide exactly one content source: content with the message text, or file_path with an absolute path to a UTF-8 .txt or .md file. " +
 		"Remember that readers DO NOT have access to your context, so include in the message all the necessary information to understand its essence. " +
 		"Otherwise, critical details will be lost during information transfer."
 

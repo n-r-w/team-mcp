@@ -11,7 +11,7 @@ The server exposes a desk-topic-message model so agents can coordinate work pred
 - `desk_create` — Creates a collaboration desk and returns `desk_id`
 - `topic_create` — Creates a topic in a desk and returns `topic_id`
 - `topic_list` — Lists topic headers for a desk in creation order
-- `message_create` — Creates a message in a topic and returns `message_id`
+- `message_create` — Creates a message from `content` or an absolute UTF-8 `.txt`/`.md` `file_path` and returns `message_id`
 - `message_list` — Lists message headers for a topic in creation order
 - `message_get` — Returns full message payload by `message_id`
 
