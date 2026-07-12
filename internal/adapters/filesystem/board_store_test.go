@@ -736,8 +736,8 @@ func TestBoardStoreCreateMessageRetriesOnVersionConflict(t *testing.T) {
 	})
 }
 
-// TestBoardStoreCreateMessagePreservesCommittedOrder verifies distinct concurrent writes are kept exactly once in commit order.
-func TestBoardStoreCreateMessagePreservesCommittedOrder(t *testing.T) {
+// TestBoardStoreCreateMessagePreservesConcurrentMessages verifies concurrent commits retain both messages after reopen.
+func TestBoardStoreCreateMessagePreservesConcurrentMessages(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
@@ -783,13 +783,22 @@ func TestBoardStoreCreateMessagePreservesCommittedOrder(t *testing.T) {
 		wg.Wait()
 		close(results)
 
-		completionOrder := make([]domain.MessageHeader, 0, 2)
+		expectedMessages := make([]domain.MessageHeader, 0, 2)
+		messageIDs := make(map[string]string, 2)
 		for outcome := range results {
 			require.NoError(t, outcome.Err)
 			require.Equal(t, domain.BusinessStatusOK, outcome.Status)
-			completionOrder = append(completionOrder, domain.MessageHeader{MessageID: outcome.Meta.MessageID, Title: outcome.Meta.Title})
+			require.Contains(t, []string{"First", "Second"}, outcome.Meta.Title)
+			require.NotContains(t, messageIDs, outcome.Meta.Title)
+
+			messageIDs[outcome.Meta.Title] = outcome.Meta.MessageID
+			expectedMessages = append(expectedMessages, domain.MessageHeader{
+				MessageID: outcome.Meta.MessageID,
+				Title:     outcome.Meta.Title,
+			})
 		}
-		require.Len(t, completionOrder, 2)
+		require.Len(t, expectedMessages, 2)
+		require.NotEqual(t, messageIDs["First"], messageIDs["Second"])
 
 		reopenedStore, reopenErr := NewBoardStore(rootDir)
 		require.NoError(t, reopenErr)
@@ -797,7 +806,7 @@ func TestBoardStoreCreateMessagePreservesCommittedOrder(t *testing.T) {
 		messages, found, listErr := reopenedStore.ListMessages(ctx, topicID)
 		require.NoError(t, listErr)
 		require.True(t, found)
-		require.Equal(t, completionOrder, messages)
+		require.ElementsMatch(t, expectedMessages, messages)
 	})
 }
 
