@@ -62,13 +62,22 @@ func captureSlogJSON(t *testing.T) (*lockedBuffer, func()) {
 	return output, restore
 }
 
+// newTestService builds a use-case service with the dependencies shared by existing tests.
+func newTestService(controller *gomock.Controller, boardStore IBoardStore) *Service {
+	return New(
+		boardStore,
+		NewMockIMessageFileWriter(controller),
+		Options{SessionTTL: time.Hour, MaxTitleLength: 200},
+	)
+}
+
 // TestDeskCreateSuccess verifies desk_create delegates to the authoritative board store.
 func TestDeskCreateSuccess(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	boardStore.EXPECT().CreateDesk(ctx, gomock.Any()).Return("desk-1", nil)
@@ -84,7 +93,7 @@ func TestDeskCreateStoreFailureWrapsError(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	boardStore.EXPECT().CreateDesk(ctx, gomock.Any()).Return("", errors.New("create failed"))
@@ -101,7 +110,7 @@ func TestTopicCreateSuccess(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	title := "  TOPIC\t\n"
@@ -120,7 +129,7 @@ func TestTopicListNotFound(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	boardStore.EXPECT().ListTopics(ctx, "desk-1").Return(nil, false, nil)
@@ -137,7 +146,7 @@ func TestTopicListReturnsEmptySlice(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	boardStore.EXPECT().ListTopics(ctx, "desk-1").Return([]domain.TopicHeader{}, true, nil)
@@ -168,7 +177,7 @@ func TestMessageCreateStoreFailureWrapsError(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	boardStore.EXPECT().CreateMessage(ctx, "topic-1", "Title", "title", "Body").Return(
@@ -190,7 +199,7 @@ func TestMessageListNotFound(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	boardStore.EXPECT().ListMessages(ctx, "topic-1").Return(nil, false, nil)
@@ -207,7 +216,7 @@ func TestMessageListReturnsEmptySlice(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	boardStore.EXPECT().ListMessages(ctx, "topic-1").Return([]domain.MessageHeader{}, true, nil)
@@ -225,7 +234,7 @@ func TestMessageGetNotFound(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	boardStore.EXPECT().GetMessage(ctx, "msg-1").Return(
@@ -240,13 +249,128 @@ func TestMessageGetNotFound(t *testing.T) {
 	require.Equal(t, domain.BusinessStatusNotFound, result.Status)
 }
 
+// TestSaveMessageToFileSuccess verifies lookup precedes writing and preserves exact message content.
+func TestSaveMessageToFileSuccess(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	boardStore := NewMockIBoardStore(controller)
+	writer := NewMockIMessageFileWriter(controller)
+	service := New(boardStore, writer, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	ctx := t.Context()
+	content := "  first line\nlast line  "
+	request := domain.SaveMessageToFileRequest{
+		MessageID: "msg-1",
+		FilePath:  "/home/user/message.md",
+		Mode:      domain.MessageFileModeCreate,
+	}
+
+	gomock.InOrder(
+		boardStore.EXPECT().GetMessage(ctx, request.MessageID).Return(
+			domain.MessageMeta{MessageID: request.MessageID, TopicID: "topic-1", DeskID: "desk-1", Title: "Title"},
+			content,
+			true,
+			nil,
+		),
+		writer.EXPECT().WriteMessage(ctx, request.FilePath, request.Mode, content).Return(nil),
+	)
+
+	result, err := service.SaveMessageToFile(ctx, request)
+	require.NoError(t, err)
+	require.Equal(t, domain.SaveMessageToFileResult{Status: domain.BusinessStatusOK}, result)
+}
+
+// TestSaveMessageToFileNotFound verifies an unknown message never invokes destination I/O.
+func TestSaveMessageToFileNotFound(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	boardStore := NewMockIBoardStore(controller)
+	writer := NewMockIMessageFileWriter(controller)
+	service := New(boardStore, writer, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	ctx := t.Context()
+	request := domain.SaveMessageToFileRequest{
+		MessageID: "missing",
+		FilePath:  "/home/user/message.md",
+		Mode:      domain.MessageFileModeCreate,
+	}
+
+	boardStore.EXPECT().GetMessage(ctx, request.MessageID).Return(
+		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		"",
+		false,
+		nil,
+	)
+
+	result, err := service.SaveMessageToFile(ctx, request)
+	require.NoError(t, err)
+	require.Equal(t, domain.SaveMessageToFileResult{Status: domain.BusinessStatusNotFound}, result)
+}
+
+// TestSaveMessageToFileLookupError verifies lookup failures stop before destination I/O.
+func TestSaveMessageToFileLookupError(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	boardStore := NewMockIBoardStore(controller)
+	writer := NewMockIMessageFileWriter(controller)
+	service := New(boardStore, writer, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	ctx := t.Context()
+	lookupErr := errors.New("lookup failed")
+	request := domain.SaveMessageToFileRequest{
+		MessageID: "msg-1",
+		FilePath:  "/home/user/message.md",
+		Mode:      domain.MessageFileModeCreate,
+	}
+
+	boardStore.EXPECT().GetMessage(ctx, request.MessageID).Return(
+		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		"",
+		false,
+		lookupErr,
+	)
+
+	_, err := service.SaveMessageToFile(ctx, request)
+	require.ErrorIs(t, err, lookupErr)
+	require.ErrorContains(t, err, "resolve message")
+}
+
+// TestSaveMessageToFileWriterError verifies destination failures propagate with operation context.
+func TestSaveMessageToFileWriterError(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	boardStore := NewMockIBoardStore(controller)
+	writer := NewMockIMessageFileWriter(controller)
+	service := New(boardStore, writer, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	ctx := t.Context()
+	writeErr := errors.New("write failed")
+	request := domain.SaveMessageToFileRequest{
+		MessageID: "msg-1",
+		FilePath:  "/home/user/message.md",
+		Mode:      domain.MessageFileModeOverwrite,
+	}
+
+	boardStore.EXPECT().GetMessage(ctx, request.MessageID).Return(
+		domain.MessageMeta{MessageID: request.MessageID, TopicID: "topic-1", DeskID: "desk-1", Title: "Title"},
+		"payload",
+		true,
+		nil,
+	)
+	writer.EXPECT().WriteMessage(ctx, request.FilePath, request.Mode, "payload").Return(writeErr)
+
+	_, err := service.SaveMessageToFile(ctx, request)
+	require.ErrorIs(t, err, writeErr)
+	require.ErrorContains(t, err, "write message file")
+}
+
 // TestRunLifecycleCollectorStartupCleanup verifies startup cleanup scans and removes expired desks from the authoritative store.
 func TestRunLifecycleCollectorStartupCleanup(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	boardStore.EXPECT().CollectExpiredDeskIDs(gomock.Any(), gomock.Any(), time.Hour).Return([]string{"desk-expired"}, nil)
@@ -266,7 +390,7 @@ func TestRunLifecycleCollectorRejectsNonPositiveInterval(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	err := service.RunLifecycleCollector(t.Context(), 0)
 	require.ErrorContains(t, err, "collect interval must be greater than 0")
@@ -281,7 +405,7 @@ func TestRunLifecycleCollectorLogsSuccessResults(t *testing.T) {
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	collectCallCount := 0
@@ -327,7 +451,7 @@ func runMessageCreateDuplicateTitleScenario(t *testing.T) (domain.MessageCreateR
 
 	controller := gomock.NewController(t)
 	boardStore := NewMockIBoardStore(controller)
-	service := New(boardStore, Options{SessionTTL: time.Hour, MaxTitleLength: 200})
+	service := newTestService(controller, boardStore)
 
 	ctx := t.Context()
 	boardStore.EXPECT().CreateMessage(

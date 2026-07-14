@@ -102,6 +102,21 @@ func (mr *MockICoordinationMockRecorder) MessageList(ctx, request any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MessageList", reflect.TypeOf((*MockICoordination)(nil).MessageList), ctx, request)
 }
 
+// SaveMessageToFile mocks base method.
+func (m *MockICoordination) SaveMessageToFile(ctx context.Context, request domain.SaveMessageToFileRequest) (domain.SaveMessageToFileResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveMessageToFile", ctx, request)
+	ret0, _ := ret[0].(domain.SaveMessageToFileResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SaveMessageToFile indicates an expected call of SaveMessageToFile.
+func (mr *MockICoordinationMockRecorder) SaveMessageToFile(ctx, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveMessageToFile", reflect.TypeOf((*MockICoordination)(nil).SaveMessageToFile), ctx, request)
+}
+
 // TopicCreate mocks base method.
 func (m *MockICoordination) TopicCreate(ctx context.Context, request domain.TopicCreateRequest) (domain.TopicCreateResult, error) {
 	m.ctrl.T.Helper()

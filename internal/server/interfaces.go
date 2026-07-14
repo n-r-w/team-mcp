@@ -24,6 +24,8 @@ type ICoordination interface {
 	MessageList(ctx context.Context, request domain.MessageListRequest) (domain.MessageListResult, error)
 	// MessageGet returns full message payload by message identifier.
 	MessageGet(ctx context.Context, request domain.MessageGetRequest) (domain.MessageGetResult, error)
+	// SaveMessageToFile writes a message payload to a user-selected file.
+	SaveMessageToFile(ctx context.Context, request domain.SaveMessageToFileRequest) (domain.SaveMessageToFileResult, error)
 }
 
 // IMCPRuntime defines MCP runtime consumed by server adapter Run method.

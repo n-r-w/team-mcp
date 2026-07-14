@@ -80,6 +80,18 @@ type MessageGetResult struct {
 	Content string
 }
 
+// SaveMessageToFileRequest contains input for save_message_to_file operation.
+type SaveMessageToFileRequest struct {
+	MessageID string
+	FilePath  string
+	Mode      MessageFileMode
+}
+
+// SaveMessageToFileResult contains output for save_message_to_file operation.
+type SaveMessageToFileResult struct {
+	Status BusinessStatus
+}
+
 // DeskSnapshot contains in-memory references for one desk used during cascade removal.
 type DeskSnapshot struct {
 	DeskID     string

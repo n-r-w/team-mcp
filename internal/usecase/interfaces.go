@@ -9,6 +9,12 @@ import (
 
 //go:generate mockgen -destination=interfaces_mock.go -package=usecase -source=interfaces.go
 
+// IMessageFileWriter defines the destination file boundary for message exports.
+type IMessageFileWriter interface {
+	// WriteMessage writes exact message content using the requested destination mode.
+	WriteMessage(ctx context.Context, filePath string, mode domain.MessageFileMode, content string) error
+}
+
 // IBoardStore defines the authoritative desk/topic/message persistence boundary for runtime operations.
 type IBoardStore interface {
 	// CreateDesk creates desk metadata record and returns desk identifier.

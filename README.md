@@ -14,6 +14,7 @@ The server exposes a desk-topic-message model so agents can coordinate work pred
 - `message_create` — Creates a message from `content` or an absolute UTF-8 `.txt`/`.md` `file_path` and returns `message_id`
 - `message_list` — Lists message headers for a topic in creation order
 - `message_get` — Returns full message payload by `message_id`
+- `save_message_to_file` — Saves the exact message payload to an absolute `.txt` or `.md` path under the current user's home directory. `mode` must be `create` or `overwrite`; missing parent directories are created automatically
 
 ### 🚨 CRITICAL: Role and tool access policy
 
@@ -84,6 +85,9 @@ task build
 
 - `TEAM_MCP_TOOL_MESSAGE_GET_DESC` (optional, default: built-in `message_get` description)
   * Overrides MCP `message_get` tool description.
+
+- `TEAM_MCP_TOOL_SAVE_MESSAGE_TO_FILE_DESC` (optional, default: built-in `save_message_to_file` description)
+  * Overrides MCP `save_message_to_file` tool description.
 
 - `TEAM_MCP_SYSTEM_PROMPT` (optional, default: built-in server instructions)
   * Overrides MCP server instructions exposed via `ServerOptions.Instructions`.

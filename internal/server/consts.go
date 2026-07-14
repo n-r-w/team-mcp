@@ -67,6 +67,11 @@ const (
 	// toolMessageGetDesc explains full payload retrieval contract for message_get.
 	toolMessageGetDesc = "Returns full message payload. MUST NOT read outdated messages, e.g. previous versions, etc. Consider the order of messages in the topic."
 
+	// toolSaveMessageToFileName is MCP method name for save_message_to_file operation.
+	toolSaveMessageToFileName = "save_message_to_file"
+	// toolSaveMessageToFileDesc explains the constrained message export contract.
+	toolSaveMessageToFileDesc = "Saves a message payload to an absolute .txt or .md file under the current user home directory. Mode must be create or overwrite."
+
 	// serverName is transport-visible runtime server identifier.
 	serverName = "team-mcp"
 	// serverTitle is human-readable title reported by MCP runtime.

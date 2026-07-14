@@ -83,3 +83,15 @@ type messageGetOutput struct {
 	Title   string `json:"title,omitempty"`
 	Content string `json:"content,omitempty"`
 }
+
+// saveMessageToFileInput is MCP input DTO for save_message_to_file tool.
+type saveMessageToFileInput struct {
+	MessageID string `json:"message_id" jsonschema:"message identifier. required"`
+	FilePath  string `json:"file_path" jsonschema:"absolute .txt or .md path under current user home. required"`
+	Mode      string `json:"mode" jsonschema:"write mode. allowed values: create, overwrite. required"`
+}
+
+// saveMessageToFileOutput is MCP output DTO for save_message_to_file tool.
+type saveMessageToFileOutput struct {
+	Status string `json:"status,omitempty"`
+}

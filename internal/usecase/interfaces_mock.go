@@ -18,6 +18,44 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// MockIMessageFileWriter is a mock of IMessageFileWriter interface.
+type MockIMessageFileWriter struct {
+	ctrl     *gomock.Controller
+	recorder *MockIMessageFileWriterMockRecorder
+	isgomock struct{}
+}
+
+// MockIMessageFileWriterMockRecorder is the mock recorder for MockIMessageFileWriter.
+type MockIMessageFileWriterMockRecorder struct {
+	mock *MockIMessageFileWriter
+}
+
+// NewMockIMessageFileWriter creates a new mock instance.
+func NewMockIMessageFileWriter(ctrl *gomock.Controller) *MockIMessageFileWriter {
+	mock := &MockIMessageFileWriter{ctrl: ctrl}
+	mock.recorder = &MockIMessageFileWriterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIMessageFileWriter) EXPECT() *MockIMessageFileWriterMockRecorder {
+	return m.recorder
+}
+
+// WriteMessage mocks base method.
+func (m *MockIMessageFileWriter) WriteMessage(ctx context.Context, filePath string, mode domain.MessageFileMode, content string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WriteMessage", ctx, filePath, mode, content)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WriteMessage indicates an expected call of WriteMessage.
+func (mr *MockIMessageFileWriterMockRecorder) WriteMessage(ctx, filePath, mode, content any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteMessage", reflect.TypeOf((*MockIMessageFileWriter)(nil).WriteMessage), ctx, filePath, mode, content)
+}
+
 // MockIBoardStore is a mock of IBoardStore interface.
 type MockIBoardStore struct {
 	ctrl     *gomock.Controller

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/n-r-w/team-mcp/internal/adapters/filesystem"
+	"github.com/n-r-w/team-mcp/internal/adapters/messagefile"
 	"github.com/n-r-w/team-mcp/internal/config"
 	"github.com/n-r-w/team-mcp/internal/server"
 	"github.com/n-r-w/team-mcp/internal/usecase"
@@ -47,8 +48,15 @@ func New(cfg *config.Config, version string) (*Service, error) {
 		return nil, fmt.Errorf("build authoritative board store: %w", boardStoreErr)
 	}
 
+	homeDir, homeDirErr := os.UserHomeDir()
+	if homeDirErr != nil {
+		return nil, fmt.Errorf("resolve user home directory: %w", homeDirErr)
+	}
+
+	messageFileWriter := messagefile.New(homeDir)
 	usecaseService := usecase.New(
 		boardStore,
+		messageFileWriter,
 		usecase.Options{SessionTTL: cfg.SessionTTL, MaxTitleLength: cfg.MaxTitleLength},
 	)
 
@@ -57,12 +65,13 @@ func New(cfg *config.Config, version string) (*Service, error) {
 		MaxTitleLength:      cfg.MaxTitleLength,
 		CoordinationUseCase: usecaseService,
 		ToolDescriptions: server.ToolDescriptions{
-			DeskCreate:    cfg.ToolDeskCreateDesc,
-			TopicCreate:   cfg.ToolTopicCreateDesc,
-			TopicList:     cfg.ToolTopicListDesc,
-			MessageCreate: cfg.ToolMessageCreateDesc,
-			MessageList:   cfg.ToolMessageListDesc,
-			MessageGet:    cfg.ToolMessageGetDesc,
+			DeskCreate:        cfg.ToolDeskCreateDesc,
+			TopicCreate:       cfg.ToolTopicCreateDesc,
+			TopicList:         cfg.ToolTopicListDesc,
+			MessageCreate:     cfg.ToolMessageCreateDesc,
+			MessageList:       cfg.ToolMessageListDesc,
+			MessageGet:        cfg.ToolMessageGetDesc,
+			SaveMessageToFile: cfg.ToolSaveMessageToFileDesc,
 		},
 		SystemPrompt: cfg.SystemPrompt,
 	})

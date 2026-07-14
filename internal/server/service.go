@@ -70,6 +70,10 @@ func applyDefaultMetadata(options *Options) {
 		options.ToolDescriptions.MessageGet = toolMessageGetDesc
 	}
 
+	if strings.TrimSpace(options.ToolDescriptions.SaveMessageToFile) == "" {
+		options.ToolDescriptions.SaveMessageToFile = toolSaveMessageToFileDesc
+	}
+
 	if strings.TrimSpace(options.SystemPrompt) == "" {
 		options.SystemPrompt = systemPrompt
 	}
@@ -119,6 +123,10 @@ func (s *Service) register(server *mcp.Server) {
 		Name:        toolMessageGetName,
 		Description: s.options.ToolDescriptions.MessageGet,
 	}, s.messageGetTool)
+	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
+		Name:        toolSaveMessageToFileName,
+		Description: s.options.ToolDescriptions.SaveMessageToFile,
+	}, s.saveMessageToFileTool)
 }
 
 // deskCreateTool handles desk creation and ID publication.
@@ -347,6 +355,63 @@ func (s *Service) messageGetTool(
 	}
 
 	return nil, messageGetOutput{Status: "", Title: result.Title, Content: result.Content}, nil
+}
+
+// saveMessageToFileTool validates the transport contract and delegates ordered export orchestration.
+func (s *Service) saveMessageToFileTool(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	input saveMessageToFileInput,
+) (*mcp.CallToolResult, saveMessageToFileOutput, error) {
+	messageID := strings.TrimSpace(input.MessageID)
+	if err := validateRequiredID("message_id", messageID); err != nil {
+		return nil, saveMessageToFileOutput{}, err
+	}
+	if strings.TrimSpace(input.FilePath) == "" {
+		return nil, saveMessageToFileOutput{}, errors.New("file_path is required")
+	}
+	if !filepath.IsAbs(input.FilePath) {
+		return nil, saveMessageToFileOutput{}, errors.New("file_path must be absolute")
+	}
+	extension := filepath.Ext(filepath.Clean(input.FilePath))
+	if extension != ".txt" && extension != ".md" {
+		return nil, saveMessageToFileOutput{}, errors.New("file_path extension must be .txt or .md")
+	}
+
+	mode, err := parseMessageFileMode(input.Mode)
+	if err != nil {
+		return nil, saveMessageToFileOutput{}, err
+	}
+
+	result, err := s.options.CoordinationUseCase.SaveMessageToFile(ctx, domain.SaveMessageToFileRequest{
+		MessageID: messageID,
+		FilePath:  input.FilePath,
+		Mode:      mode,
+	})
+	if err != nil {
+		return nil, saveMessageToFileOutput{}, err
+	}
+	if result.Status == domain.BusinessStatusNotFound {
+		return nil, saveMessageToFileOutput{Status: string(result.Status)}, nil
+	}
+
+	return nil, saveMessageToFileOutput{Status: ""}, nil
+}
+
+// parseMessageFileMode validates and converts the closed transport mode enum.
+func parseMessageFileMode(mode string) (domain.MessageFileMode, error) {
+	if mode == "" {
+		return "", errors.New("mode is required")
+	}
+
+	switch domain.MessageFileMode(mode) {
+	case domain.MessageFileModeCreate:
+		return domain.MessageFileModeCreate, nil
+	case domain.MessageFileModeOverwrite:
+		return domain.MessageFileModeOverwrite, nil
+	default:
+		return "", errors.New("mode must be create or overwrite")
+	}
 }
 
 // validateRequiredID validates required identifier input.

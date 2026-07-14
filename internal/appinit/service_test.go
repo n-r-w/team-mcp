@@ -7,17 +7,19 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/n-r-w/team-mcp/internal/adapters/filesystem"
 	"github.com/n-r-w/team-mcp/internal/config"
 )
 
-var appinitLoggerGlobalsMu sync.Mutex
+var appinitProcessGlobalsMu sync.Mutex
 
 // serviceSuite validates startup wiring and logger-config fail-fast behavior.
 type serviceSuite struct {
@@ -31,20 +33,35 @@ func TestServiceSuite(t *testing.T) {
 	suite.Run(t, new(serviceSuite))
 }
 
-// lockAppinitLoggerGlobals serializes tests that read or mutate process-global logger and stdio state.
-func lockAppinitLoggerGlobals(t testing.TB) func() {
+// TestNewFailsWhenUserHomeUnavailable verifies home resolution errors stop application startup.
+func TestNewFailsWhenUserHomeUnavailable(t *testing.T) {
+	t.Cleanup(lockAppinitProcessGlobals(t))
+
+	homeVariable := "HOME"
+	if runtime.GOOS == "windows" {
+		homeVariable = "USERPROFILE"
+	}
+	t.Setenv(homeVariable, "")
+
+	_, err := New(newValidConfig(t), "test-version")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "resolve user home directory")
+}
+
+// lockAppinitProcessGlobals serializes tests that mutate the default logger, standard streams, or home environment.
+func lockAppinitProcessGlobals(t testing.TB) func() {
 	t.Helper()
 
-	appinitLoggerGlobalsMu.Lock()
+	appinitProcessGlobalsMu.Lock()
 
 	return func() {
-		appinitLoggerGlobalsMu.Unlock()
+		appinitProcessGlobalsMu.Unlock()
 	}
 }
 
 // TestNewServiceBuildsForValidConfig verifies startup wiring succeeds for valid runtime configuration.
 func (s *serviceSuite) TestNewServiceBuildsForValidConfig() {
-	s.T().Cleanup(lockAppinitLoggerGlobals(s.T()))
+	s.T().Cleanup(lockAppinitProcessGlobals(s.T()))
 
 	cfg := s.validConfig()
 
@@ -55,7 +72,7 @@ func (s *serviceSuite) TestNewServiceBuildsForValidConfig() {
 
 // TestNewServiceBuildsForExistingRuntimeStore verifies startup accepts a message directory populated by a previous Team MCP run.
 func (s *serviceSuite) TestNewServiceBuildsForExistingRuntimeStore() {
-	s.T().Cleanup(lockAppinitLoggerGlobals(s.T()))
+	s.T().Cleanup(lockAppinitProcessGlobals(s.T()))
 
 	cfg := s.validConfig()
 	store, err := filesystem.NewBoardStore(cfg.MessageDir)
@@ -71,7 +88,7 @@ func (s *serviceSuite) TestNewServiceBuildsForExistingRuntimeStore() {
 
 // TestNewServiceLogsStartupConfig verifies startup emits effective runtime env-equivalent values.
 func (s *serviceSuite) TestNewServiceLogsStartupConfig() {
-	s.T().Cleanup(lockAppinitLoggerGlobals(s.T()))
+	s.T().Cleanup(lockAppinitProcessGlobals(s.T()))
 
 	cfg := s.validConfig()
 
@@ -183,7 +200,7 @@ func (s *serviceSuite) TestRunDoesNotBlockOnStuckCleanup() {
 
 // TestBuildLoggerWritesToStderrOnly verifies stdio MCP transport remains parseable because logs avoid stdout.
 func (s *serviceSuite) TestBuildLoggerWritesToStderrOnly() {
-	s.T().Cleanup(lockAppinitLoggerGlobals(s.T()))
+	s.T().Cleanup(lockAppinitProcessGlobals(s.T()))
 
 	cfg := s.validConfig()
 
@@ -224,18 +241,26 @@ func (s *serviceSuite) TestBuildLoggerWritesToStderrOnly() {
 
 // validConfig builds one complete valid startup config baseline.
 func (s *serviceSuite) validConfig() *config.Config {
+	return newValidConfig(s.T())
+}
+
+// newValidConfig builds valid startup configuration for suite and standalone tests.
+func newValidConfig(t testing.TB) *config.Config {
+	t.Helper()
+
 	return &config.Config{
-		MessageDir:               filepath.Join(s.T().TempDir(), "messages"),
-		SessionTTL:               10 * time.Minute,
-		MaxTitleLength:           200,
-		ToolDeskCreateDesc:       "",
-		ToolTopicCreateDesc:      "",
-		ToolTopicListDesc:        "",
-		ToolMessageCreateDesc:    "",
-		ToolMessageListDesc:      "",
-		ToolMessageGetDesc:       "",
-		SystemPrompt:             "",
-		LogLevel:                 "info",
-		LifecycleCollectInterval: time.Second,
+		MessageDir:                filepath.Join(t.TempDir(), "messages"),
+		SessionTTL:                10 * time.Minute,
+		MaxTitleLength:            200,
+		ToolDeskCreateDesc:        "",
+		ToolTopicCreateDesc:       "",
+		ToolTopicListDesc:         "",
+		ToolMessageCreateDesc:     "",
+		ToolMessageListDesc:       "",
+		ToolMessageGetDesc:        "",
+		ToolSaveMessageToFileDesc: "",
+		SystemPrompt:              "",
+		LogLevel:                  "info",
+		LifecycleCollectInterval:  time.Second,
 	}
 }

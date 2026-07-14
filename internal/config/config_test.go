@@ -28,6 +28,7 @@ func TestLoadReadsMCPMetadataOverrides(t *testing.T) {
 	t.Setenv("TEAM_MCP_TOOL_MESSAGE_CREATE_DESC", "message create override")
 	t.Setenv("TEAM_MCP_TOOL_MESSAGE_LIST_DESC", "message list override")
 	t.Setenv("TEAM_MCP_TOOL_MESSAGE_GET_DESC", "message get override")
+	t.Setenv("TEAM_MCP_TOOL_SAVE_MESSAGE_TO_FILE_DESC", "save message to file override")
 	t.Setenv("TEAM_MCP_SYSTEM_PROMPT", "system prompt override")
 
 	cfg, err := Load()
@@ -38,6 +39,7 @@ func TestLoadReadsMCPMetadataOverrides(t *testing.T) {
 	require.Equal(t, "message create override", cfg.ToolMessageCreateDesc)
 	require.Equal(t, "message list override", cfg.ToolMessageListDesc)
 	require.Equal(t, "message get override", cfg.ToolMessageGetDesc)
+	require.Equal(t, "save message to file override", cfg.ToolSaveMessageToFileDesc)
 	require.Equal(t, "system prompt override", cfg.SystemPrompt)
 }
 
@@ -89,17 +91,18 @@ func (s *validateSuite) TestValidateRejectsUnsupportedLogLevel() {
 // validConfig builds one complete valid startup config baseline for invariant testing.
 func (s *validateSuite) validConfig() *Config {
 	return &Config{
-		MessageDir:               "messages",
-		SessionTTL:               10 * time.Minute,
-		MaxTitleLength:           200,
-		ToolDeskCreateDesc:       "",
-		ToolTopicCreateDesc:      "",
-		ToolTopicListDesc:        "",
-		ToolMessageCreateDesc:    "",
-		ToolMessageListDesc:      "",
-		ToolMessageGetDesc:       "",
-		SystemPrompt:             "",
-		LogLevel:                 "info",
-		LifecycleCollectInterval: time.Second,
+		MessageDir:                "messages",
+		SessionTTL:                10 * time.Minute,
+		MaxTitleLength:            200,
+		ToolDeskCreateDesc:        "",
+		ToolTopicCreateDesc:       "",
+		ToolTopicListDesc:         "",
+		ToolMessageCreateDesc:     "",
+		ToolMessageListDesc:       "",
+		ToolMessageGetDesc:        "",
+		ToolSaveMessageToFileDesc: "",
+		SystemPrompt:              "",
+		LogLevel:                  "info",
+		LifecycleCollectInterval:  time.Second,
 	}
 }

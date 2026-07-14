@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -24,12 +25,13 @@ func newTestOptions(coordination ICoordination) Options {
 		MaxTitleLength:      200,
 		CoordinationUseCase: coordination,
 		ToolDescriptions: ToolDescriptions{
-			DeskCreate:    "",
-			TopicCreate:   "",
-			TopicList:     "",
-			MessageCreate: "",
-			MessageList:   "",
-			MessageGet:    "",
+			DeskCreate:        "",
+			TopicCreate:       "",
+			TopicList:         "",
+			MessageCreate:     "",
+			MessageList:       "",
+			MessageGet:        "",
+			SaveMessageToFile: "",
 		},
 		SystemPrompt: "",
 	}
@@ -73,8 +75,8 @@ func TestRunErrorWrap(t *testing.T) {
 	require.ErrorIs(t, err, sentinelErr)
 }
 
-// TestNewRegistersSixTools verifies constructor registers only the supported six tools.
-func TestNewRegistersSixTools(t *testing.T) {
+// TestNewRegistersSevenTools verifies constructor registers only the supported seven tools.
+func TestNewRegistersSevenTools(t *testing.T) {
 	t.Parallel()
 
 	controller := gomock.NewController(t)
@@ -84,16 +86,43 @@ func TestNewRegistersSixTools(t *testing.T) {
 	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
 	require.True(t, ok)
 
-	registeredTools, err := listRegisteredToolsModern(t, t.Context(), runtimeServer)
+	registeredTools, err := listRegisteredToolDescriptions(t, t.Context(), runtimeServer)
 	require.NoError(t, err)
-	require.Len(t, registeredTools, 6)
+	require.Len(t, registeredTools, 7)
 	require.Contains(t, registeredTools, toolDeskCreateName)
 	require.Contains(t, registeredTools, toolTopicCreateName)
 	require.Contains(t, registeredTools, toolTopicListName)
 	require.Contains(t, registeredTools, toolMessageCreateName)
 	require.Contains(t, registeredTools, toolMessageListName)
 	require.Contains(t, registeredTools, toolMessageGetName)
-	require.NotContains(t, registeredTools, "desk_remove")
+	require.Contains(t, registeredTools, toolSaveMessageToFileName)
+}
+
+// TestSaveMessageToFileSchemaRequiresAllInputs verifies MCP schema marks every input field as required.
+func TestSaveMessageToFileSchemaRequiresAllInputs(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(newTestOptions(coordination))
+
+	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
+	require.True(t, ok)
+
+	registeredTools, err := listRegisteredToolDefinitions(t, t.Context(), runtimeServer)
+	require.NoError(t, err)
+
+	tool, found := registeredTools[toolSaveMessageToFileName]
+	require.True(t, found)
+
+	schemaPayload, err := json.Marshal(tool.InputSchema)
+	require.NoError(t, err)
+
+	var schema struct {
+		Required []string `json:"required"`
+	}
+	require.NoError(t, json.Unmarshal(schemaPayload, &schema))
+	require.ElementsMatch(t, []string{"message_id", "file_path", "mode"}, schema.Required)
 }
 
 // TestTopicCreateNotFound verifies topic_create maps business not_found status into output status.
@@ -326,6 +355,153 @@ func TestMessageGetNotFound(t *testing.T) {
 	require.Equal(t, string(domain.BusinessStatusNotFound), output.Status)
 }
 
+// TestSaveMessageToFileValidation verifies invalid transport inputs do not reach the use case.
+func TestSaveMessageToFileValidation(t *testing.T) {
+	t.Parallel()
+
+	validPath := filepath.Join(t.TempDir(), "message.md")
+	testCases := map[string]struct {
+		input       saveMessageToFileInput
+		expectedErr string
+	}{
+		"missing message identifier": {
+			input:       saveMessageToFileInput{MessageID: " ", FilePath: validPath, Mode: string(domain.MessageFileModeCreate)},
+			expectedErr: "message_id is required",
+		},
+		"missing file path": {
+			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: " ", Mode: string(domain.MessageFileModeCreate)},
+			expectedErr: "file_path is required",
+		},
+		"missing mode": {
+			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: validPath, Mode: ""},
+			expectedErr: "mode is required",
+		},
+		"unsupported mode": {
+			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: validPath, Mode: "append"},
+			expectedErr: "mode must be create or overwrite",
+		},
+		"relative file path": {
+			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: "message.md", Mode: string(domain.MessageFileModeCreate)},
+			expectedErr: "file_path must be absolute",
+		},
+		"unsupported extension": {
+			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: filepath.Join(t.TempDir(), "message.MD"), Mode: string(domain.MessageFileModeCreate)},
+			expectedErr: "file_path extension must be .txt or .md",
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			controller := gomock.NewController(t)
+			service := New(newTestOptions(NewMockICoordination(controller)))
+
+			_, _, err := service.saveMessageToFileTool(t.Context(), nil, testCase.input)
+			require.ErrorContains(t, err, testCase.expectedErr)
+		})
+	}
+}
+
+// TestSaveMessageToFileNotFound verifies the handler maps missing messages without a destination path.
+func TestSaveMessageToFileNotFound(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(newTestOptions(coordination))
+	filePath := filepath.Join(t.TempDir(), "message.txt")
+	request := domain.SaveMessageToFileRequest{
+		MessageID: "missing",
+		FilePath:  filePath,
+		Mode:      domain.MessageFileModeCreate,
+	}
+
+	coordination.EXPECT().SaveMessageToFile(t.Context(), request).Return(
+		domain.SaveMessageToFileResult{Status: domain.BusinessStatusNotFound},
+		nil,
+	)
+
+	_, output, err := service.saveMessageToFileTool(t.Context(), nil, saveMessageToFileInput{
+		MessageID: request.MessageID,
+		FilePath:  request.FilePath,
+		Mode:      string(request.Mode),
+	})
+	require.NoError(t, err)
+	require.Equal(t, saveMessageToFileOutput{Status: string(domain.BusinessStatusNotFound)}, output)
+}
+
+// TestSaveMessageToFileError verifies the handler returns use-case failures without redundant tool context.
+func TestSaveMessageToFileError(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(newTestOptions(coordination))
+	filePath := filepath.Join(t.TempDir(), "message.txt")
+	request := domain.SaveMessageToFileRequest{
+		MessageID: "msg-1",
+		FilePath:  filePath,
+		Mode:      domain.MessageFileModeOverwrite,
+	}
+	writeErr := errors.New("write failed")
+
+	coordination.EXPECT().SaveMessageToFile(t.Context(), request).Return(
+		domain.SaveMessageToFileResult{Status: ""},
+		writeErr,
+	)
+
+	_, _, err := service.saveMessageToFileTool(t.Context(), nil, saveMessageToFileInput{
+		MessageID: request.MessageID,
+		FilePath:  request.FilePath,
+		Mode:      string(request.Mode),
+	})
+	require.ErrorIs(t, err, writeErr)
+	require.EqualError(t, err, writeErr.Error())
+}
+
+// TestSaveMessageToFileMCPOutput verifies clients receive an empty object in structured and text success results.
+func TestSaveMessageToFileMCPOutput(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(newTestOptions(coordination))
+	filePath := filepath.Join(t.TempDir(), "message.md")
+	request := domain.SaveMessageToFileRequest{
+		MessageID: "msg-1",
+		FilePath:  filePath,
+		Mode:      domain.MessageFileModeCreate,
+	}
+	coordination.EXPECT().SaveMessageToFile(gomock.Any(), request).Return(
+		domain.SaveMessageToFileResult{Status: domain.BusinessStatusOK},
+		nil,
+	)
+
+	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
+	require.True(t, ok)
+	clientSession, err := connectTestClient(t, t.Context(), runtimeServer)
+	require.NoError(t, err)
+
+	result, err := clientSession.CallTool(t.Context(), &mcp.CallToolParams{
+		Meta: nil,
+		Name: toolSaveMessageToFileName,
+		Arguments: map[string]any{
+			"message_id": request.MessageID,
+			"file_path":  request.FilePath,
+			"mode":       request.Mode,
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+	require.Equal(t, map[string]any{}, result.StructuredContent)
+	require.Len(t, result.Content, 1)
+
+	textContent, ok := result.Content[0].(*mcp.TextContent)
+	require.True(t, ok)
+	require.JSONEq(t, `{}`, textContent.Text)
+}
+
 // TestNewAppliesCustomDescriptions verifies constructor options override default MCP tool descriptions.
 func TestNewAppliesCustomDescriptions(t *testing.T) {
 	t.Parallel()
@@ -337,12 +513,13 @@ func TestNewAppliesCustomDescriptions(t *testing.T) {
 		MaxTitleLength:      200,
 		CoordinationUseCase: coordination,
 		ToolDescriptions: ToolDescriptions{
-			DeskCreate:    "custom desk_create",
-			TopicCreate:   "custom topic_create",
-			TopicList:     "custom topic_list",
-			MessageCreate: "custom message_create",
-			MessageList:   "custom message_list",
-			MessageGet:    "custom message_get",
+			DeskCreate:        "custom desk_create",
+			TopicCreate:       "custom topic_create",
+			TopicList:         "custom topic_list",
+			MessageCreate:     "custom message_create",
+			MessageList:       "custom message_list",
+			MessageGet:        "custom message_get",
+			SaveMessageToFile: "custom save_message_to_file",
 		},
 		SystemPrompt: "custom system prompt",
 	})
@@ -350,16 +527,16 @@ func TestNewAppliesCustomDescriptions(t *testing.T) {
 	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
 	require.True(t, ok)
 
-	registeredTools, err := listRegisteredToolsModern(t, t.Context(), runtimeServer)
+	registeredTools, err := listRegisteredToolDescriptions(t, t.Context(), runtimeServer)
 	require.NoError(t, err)
-	require.Len(t, registeredTools, 6)
+	require.Len(t, registeredTools, 7)
 	require.Equal(t, "custom desk_create", registeredTools[toolDeskCreateName])
 	require.Equal(t, "custom topic_create", registeredTools[toolTopicCreateName])
 	require.Equal(t, "custom topic_list", registeredTools[toolTopicListName])
 	require.Equal(t, "custom message_create", registeredTools[toolMessageCreateName])
 	require.Equal(t, "custom message_list", registeredTools[toolMessageListName])
 	require.Equal(t, "custom message_get", registeredTools[toolMessageGetName])
-	require.NotContains(t, registeredTools, "desk_remove")
+	require.Equal(t, "custom save_message_to_file", registeredTools[toolSaveMessageToFileName])
 	require.Equal(t, "custom system prompt", service.options.SystemPrompt)
 }
 
@@ -374,21 +551,55 @@ func TestNewFallsBackToDefaultDescriptions(t *testing.T) {
 	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
 	require.True(t, ok)
 
-	registeredTools, err := listRegisteredToolsModern(t, t.Context(), runtimeServer)
+	registeredTools, err := listRegisteredToolDescriptions(t, t.Context(), runtimeServer)
 	require.NoError(t, err)
-	require.Len(t, registeredTools, 6)
+	require.Len(t, registeredTools, 7)
 	require.Equal(t, toolDeskCreateDesc, registeredTools[toolDeskCreateName])
 	require.Equal(t, toolTopicCreateDesc, registeredTools[toolTopicCreateName])
 	require.Equal(t, toolTopicListDesc, registeredTools[toolTopicListName])
 	require.Equal(t, toolMessageCreateDesc, registeredTools[toolMessageCreateName])
 	require.Equal(t, toolMessageListDesc, registeredTools[toolMessageListName])
 	require.Equal(t, toolMessageGetDesc, registeredTools[toolMessageGetName])
-	require.NotContains(t, registeredTools, "desk_remove")
+	require.Equal(t, toolSaveMessageToFileDesc, registeredTools[toolSaveMessageToFileName])
 	require.Equal(t, systemPrompt, service.options.SystemPrompt)
 }
 
-// listRegisteredToolsModern reads MCP server tool registry into name->description mapping.
-func listRegisteredToolsModern(t testing.TB, ctx context.Context, server *mcp.Server) (map[string]string, error) {
+// listRegisteredToolDescriptions reads MCP server tool registry into name-to-description mapping.
+func listRegisteredToolDescriptions(t testing.TB, ctx context.Context, server *mcp.Server) (map[string]string, error) {
+	definitions, err := listRegisteredToolDefinitions(t, ctx, server)
+	if err != nil {
+		return nil, err
+	}
+
+	registered := make(map[string]string, len(definitions))
+	for name, tool := range definitions {
+		registered[name] = tool.Description
+	}
+
+	return registered, nil
+}
+
+// listRegisteredToolDefinitions reads complete MCP tool definitions from an in-memory client session.
+func listRegisteredToolDefinitions(t testing.TB, ctx context.Context, server *mcp.Server) (map[string]*mcp.Tool, error) {
+	session, err := connectTestClient(t, ctx, server)
+	if err != nil {
+		return nil, err
+	}
+
+	registered := make(map[string]*mcp.Tool)
+	for tool, err := range session.Tools(ctx, nil) {
+		if err != nil {
+			return nil, err
+		}
+
+		registered[tool.Name] = tool
+	}
+
+	return registered, nil
+}
+
+// connectTestClient connects an in-memory MCP client and registers both sessions for cleanup.
+func connectTestClient(t testing.TB, ctx context.Context, server *mcp.Server) (*mcp.ClientSession, error) {
 	client := mcp.NewClient(
 		&mcp.Implementation{ //nolint:exhaustruct // external SDK
 			Name:    "test-client",
@@ -398,24 +609,17 @@ func listRegisteredToolsModern(t testing.TB, ctx context.Context, server *mcp.Se
 	)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	if _, err := server.Connect(ctx, serverTransport, nil); err != nil {
-		return nil, err
-	}
-
-	session, err := client.Connect(ctx, clientTransport, nil)
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
 	if err != nil {
 		return nil, err
 	}
-	t.Cleanup(func() { _ = session.Close() })
+	t.Cleanup(func() { _ = serverSession.Close() })
 
-	registered := make(map[string]string)
-	for tool, err := range session.Tools(ctx, nil) {
-		if err != nil {
-			return nil, err
-		}
-
-		registered[tool.Name] = tool.Description
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		return nil, err
 	}
+	t.Cleanup(func() { _ = clientSession.Close() })
 
-	return registered, nil
+	return clientSession, nil
 }

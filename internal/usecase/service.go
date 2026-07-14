@@ -18,15 +18,17 @@ var _ server.ICoordination = (*Service)(nil)
 
 // Service coordinates desk/topic/message workflows across outbound adapters.
 type Service struct {
-	boardStore IBoardStore
-	options    Options
+	boardStore        IBoardStore
+	messageFileWriter IMessageFileWriter
+	options           Options
 }
 
 // New builds coordination use case service with explicit dependencies.
-func New(boardStore IBoardStore, options Options) *Service {
+func New(boardStore IBoardStore, messageFileWriter IMessageFileWriter, options Options) *Service {
 	return &Service{
-		boardStore: boardStore,
-		options:    options,
+		boardStore:        boardStore,
+		messageFileWriter: messageFileWriter,
+		options:           options,
 	}
 }
 
@@ -194,6 +196,27 @@ func (s *Service) MessageGet(ctx context.Context, request domain.MessageGetReque
 		Title:   meta.Title,
 		Content: content,
 	}, nil
+}
+
+// SaveMessageToFile resolves current message content before allowing any destination-side operation.
+func (s *Service) SaveMessageToFile(
+	ctx context.Context,
+	request domain.SaveMessageToFileRequest,
+) (domain.SaveMessageToFileResult, error) {
+	_, content, found, err := s.boardStore.GetMessage(ctx, request.MessageID)
+	if err != nil {
+		return domain.SaveMessageToFileResult{}, fmt.Errorf("resolve message: %w", err)
+	}
+	if !found {
+		return domain.SaveMessageToFileResult{Status: domain.BusinessStatusNotFound}, nil
+	}
+
+	// The exact stored payload is forwarded without trimming, formatting, or adding a final newline.
+	if writeErr := s.messageFileWriter.WriteMessage(ctx, request.FilePath, request.Mode, content); writeErr != nil {
+		return domain.SaveMessageToFileResult{}, fmt.Errorf("write message file: %w", writeErr)
+	}
+
+	return domain.SaveMessageToFileResult{Status: domain.BusinessStatusOK}, nil
 }
 
 // RunLifecycleCollector executes startup and periodic cleanup for expired desks.

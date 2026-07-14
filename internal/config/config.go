@@ -11,34 +11,36 @@ import (
 
 // Config contains validated application settings loaded from environment.
 type Config struct {
-	MessageDir               string
-	SessionTTL               time.Duration
-	MaxTitleLength           int
-	ToolDeskCreateDesc       string
-	ToolTopicCreateDesc      string
-	ToolTopicListDesc        string
-	ToolMessageCreateDesc    string
-	ToolMessageListDesc      string
-	ToolMessageGetDesc       string
-	SystemPrompt             string
-	LogLevel                 string
-	LifecycleCollectInterval time.Duration
+	MessageDir                string
+	SessionTTL                time.Duration
+	MaxTitleLength            int
+	ToolDeskCreateDesc        string
+	ToolTopicCreateDesc       string
+	ToolTopicListDesc         string
+	ToolMessageCreateDesc     string
+	ToolMessageListDesc       string
+	ToolMessageGetDesc        string
+	ToolSaveMessageToFileDesc string
+	SystemPrompt              string
+	LogLevel                  string
+	LifecycleCollectInterval  time.Duration
 }
 
 // envConfig is raw env schema for caarlos0/env parsing.
 type envConfig struct {
-	MessageDir               string        `env:"TEAM_MCP_MESSAGE_DIR"`
-	SessionTTL               time.Duration `env:"TEAM_MCP_SESSION_TTL" envDefault:"168h"`
-	MaxTitleLength           int           `env:"TEAM_MCP_MAX_TITLE_LENGTH" envDefault:"200"`
-	ToolDeskCreateDesc       string        `env:"TEAM_MCP_TOOL_DESK_CREATE_DESC"`
-	ToolTopicCreateDesc      string        `env:"TEAM_MCP_TOOL_TOPIC_CREATE_DESC"`
-	ToolTopicListDesc        string        `env:"TEAM_MCP_TOOL_TOPIC_LIST_DESC"`
-	ToolMessageCreateDesc    string        `env:"TEAM_MCP_TOOL_MESSAGE_CREATE_DESC"`
-	ToolMessageListDesc      string        `env:"TEAM_MCP_TOOL_MESSAGE_LIST_DESC"`
-	ToolMessageGetDesc       string        `env:"TEAM_MCP_TOOL_MESSAGE_GET_DESC"`
-	SystemPrompt             string        `env:"TEAM_MCP_SYSTEM_PROMPT"`
-	LogLevel                 string        `env:"TEAM_MCP_LOG_LEVEL" envDefault:"info"`
-	LifecycleCollectInterval time.Duration `env:"TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL" envDefault:"1h"`
+	MessageDir                string        `env:"TEAM_MCP_MESSAGE_DIR"`
+	SessionTTL                time.Duration `env:"TEAM_MCP_SESSION_TTL" envDefault:"168h"`
+	MaxTitleLength            int           `env:"TEAM_MCP_MAX_TITLE_LENGTH" envDefault:"200"`
+	ToolDeskCreateDesc        string        `env:"TEAM_MCP_TOOL_DESK_CREATE_DESC"`
+	ToolTopicCreateDesc       string        `env:"TEAM_MCP_TOOL_TOPIC_CREATE_DESC"`
+	ToolTopicListDesc         string        `env:"TEAM_MCP_TOOL_TOPIC_LIST_DESC"`
+	ToolMessageCreateDesc     string        `env:"TEAM_MCP_TOOL_MESSAGE_CREATE_DESC"`
+	ToolMessageListDesc       string        `env:"TEAM_MCP_TOOL_MESSAGE_LIST_DESC"`
+	ToolMessageGetDesc        string        `env:"TEAM_MCP_TOOL_MESSAGE_GET_DESC"`
+	ToolSaveMessageToFileDesc string        `env:"TEAM_MCP_TOOL_SAVE_MESSAGE_TO_FILE_DESC"`
+	SystemPrompt              string        `env:"TEAM_MCP_SYSTEM_PROMPT"`
+	LogLevel                  string        `env:"TEAM_MCP_LOG_LEVEL" envDefault:"info"`
+	LifecycleCollectInterval  time.Duration `env:"TEAM_MCP_LIFECYCLE_COLLECT_INTERVAL" envDefault:"1h"`
 }
 
 // Load parses environment variables once and validates lifecycle/config invariants.
@@ -54,18 +56,19 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		MessageDir:               messageDir,
-		SessionTTL:               parsed.SessionTTL,
-		MaxTitleLength:           parsed.MaxTitleLength,
-		ToolDeskCreateDesc:       parsed.ToolDeskCreateDesc,
-		ToolTopicCreateDesc:      parsed.ToolTopicCreateDesc,
-		ToolTopicListDesc:        parsed.ToolTopicListDesc,
-		ToolMessageCreateDesc:    parsed.ToolMessageCreateDesc,
-		ToolMessageListDesc:      parsed.ToolMessageListDesc,
-		ToolMessageGetDesc:       parsed.ToolMessageGetDesc,
-		SystemPrompt:             parsed.SystemPrompt,
-		LogLevel:                 parsed.LogLevel,
-		LifecycleCollectInterval: parsed.LifecycleCollectInterval,
+		MessageDir:                messageDir,
+		SessionTTL:                parsed.SessionTTL,
+		MaxTitleLength:            parsed.MaxTitleLength,
+		ToolDeskCreateDesc:        parsed.ToolDeskCreateDesc,
+		ToolTopicCreateDesc:       parsed.ToolTopicCreateDesc,
+		ToolTopicListDesc:         parsed.ToolTopicListDesc,
+		ToolMessageCreateDesc:     parsed.ToolMessageCreateDesc,
+		ToolMessageListDesc:       parsed.ToolMessageListDesc,
+		ToolMessageGetDesc:        parsed.ToolMessageGetDesc,
+		ToolSaveMessageToFileDesc: parsed.ToolSaveMessageToFileDesc,
+		SystemPrompt:              parsed.SystemPrompt,
+		LogLevel:                  parsed.LogLevel,
+		LifecycleCollectInterval:  parsed.LifecycleCollectInterval,
 	}
 
 	if err := validate(cfg); err != nil {
