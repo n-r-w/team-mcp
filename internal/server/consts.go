@@ -10,16 +10,16 @@ const (
 🚨 HOW TO USE:
 1. Create one desk per task.
 2. Create topics only for distinct workstreams.
-3. Use the desk as the only channel for subagent-to-subagent coordination.
-4. Start subagents only after the desk, topics, and required context are ready.
+3. Use desk as only channel for subagent-to-subagent coordination.
+4. Start subagents only after desk, topics, and required context are ready.
 5. If you start a new task, create a new desk.
 
 🚨 MAIN RULES:
-1. Never run a subagent without the required prompt template.
-2. Never pass cross-agent context outside the desk. Reference desk messages instead.
-3. Only the main agent can create desks and topics.
+1. Never run a subagent without required prompt template.
+2. Never pass cross-agent context outside desk. Reference desk messages instead.
+3. Only main agent can create desks and topics.
 4. Never mention desk or topic creation tools in subagent prompts.
-5. Post only task-relevant information to the desk.
+5. Post only task-relevant information to desk.
 6. Every desk message must be self-contained.
 7. Users DO NOT SEE desk contents, even when IDs are provided.
 
@@ -27,16 +27,26 @@ const (
 1. Run subagents in parallel only if they are fully independent.
 2. A parallel batch is valid only if every subagent can start and finish without messages, outputs, or summaries from any other subagent in that batch.
 3. If one subagent needs facts, a plan, or any output from another subagent, run them sequentially.
-4. The desk is for sharing results, not for waiting, syncing, or handshakes between parallel subagents.
+4. Desk is for sharing results, not for waiting, syncing, or handshakes between parallel subagents.
 
-🚨 SUBAGENT PROMPT TEMPLATE. MUST include in EACH subagent's prompt AS-IS:
-"Collaboration protocol:
+🚨 NEW SUBAGENT SESSION:
+1. Initial prompt MUST include collaboration protocol below.
+2. Replace all {...} placeholders with actual values.
+3. Preserve all other wording and structure AS-IS.
+
+🚨 CONTINUED SUBAGENT SESSION:
+1. Continuation prompt MUST NOT repeat unchanged collaboration protocol details already available in session context.
+2. It MUST include all collaboration protocol details that changed since previous invocation.
+3. Changed details include newly relevant topic IDs and their purposes, message IDs that MUST be read before continuing, and updated posting requirements.
+4. If no collaboration protocol details changed, omit collaboration protocol from continuation prompt.
+
+"COLLABORATION PROTOCOL:
 - You have access to a shared collaboration desk with desk_id: {desk_id}. Use this desk to coordinate your job with other agents.
 - Topics to use: {List of relevant topics IDs and their purposes}.
-- MUST read before start: {List of relevant message IDs}
-- MUST post: {What kind of messages to post, in which topics, and when}
-- MUST save the results of your work as messages, instead of duplicating these results in your response. Include in response only:
-	- Reference to the messages in the desk with full results.
+- MUST read before start: {List of relevant message IDs}.
+- MUST post: {What kind of messages to post, in which topics, and when}.
+- MUST save results of your work as messages, instead of duplicating these results in your response. Include in response only:
+	- Reference to messages in desk with full results.
 	- Brief summary of your job: findings, conclusions, changes, etc."`
 
 	// toolTopicCreateName is MCP method name for topic_create operation.
@@ -53,8 +63,8 @@ const (
 	toolMessageCreateName = "message_create"
 	// toolMessageCreateDesc explains content-source and duplicate-title semantics for message_create.
 	toolMessageCreateDesc = "Creates new message in topic and returns message_id. " +
-		"Provide exactly one content source: content with the message text, or file_path with an absolute path to a UTF-8 .txt or .md file. " +
-		"Remember that readers DO NOT have access to your context, so include in the message all the necessary information to understand its essence. " +
+		"Provide exactly one content source: content with message text, or file_path with an absolute path to a UTF-8 .txt or .md file. " +
+		"Remember that readers DO NOT have access to your context, so include in message all necessary information to understand its essence. " +
 		"Otherwise, critical details will be lost during information transfer."
 
 	// toolMessageListName is MCP method name for message_list operation.
@@ -65,12 +75,12 @@ const (
 	// toolMessageGetName is MCP method name for message_get operation.
 	toolMessageGetName = "message_get"
 	// toolMessageGetDesc explains full payload retrieval contract for message_get.
-	toolMessageGetDesc = "Returns full message payload. MUST NOT read outdated messages, e.g. previous versions, etc. Consider the order of messages in the topic."
+	toolMessageGetDesc = "Returns full message payload. MUST NOT read outdated messages, e.g. previous versions, etc. Consider order of messages in topic."
 
 	// toolSaveMessageToFileName is MCP method name for save_message_to_file operation.
 	toolSaveMessageToFileName = "save_message_to_file"
-	// toolSaveMessageToFileDesc explains the constrained message export contract.
-	toolSaveMessageToFileDesc = "Saves a message payload to an absolute .txt or .md file under the current user home directory. Mode must be create or overwrite."
+	// toolSaveMessageToFileDesc explains constrained message export contract.
+	toolSaveMessageToFileDesc = "Saves a message payload to an absolute .txt or .md file under current user home directory. Mode must be create or overwrite."
 
 	// serverName is transport-visible runtime server identifier.
 	serverName = "team-mcp"
@@ -81,5 +91,5 @@ const (
 
 	🚨 INFORMATION LOSS PREVENTION:
 		When performing context summarization/compaction operations, you MUST ALWAYS save identifiers of relevant desks, topics, and messages.
-		Otherwise, the continuation of work will be disrupted.`
+		Otherwise, continuation of work will be disrupted.`
 )
