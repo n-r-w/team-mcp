@@ -65,7 +65,8 @@ const (
 	toolMessageCreateDesc = "Creates new message in topic and returns message_id. " +
 		"Provide exactly one content source: content with message text, or file_path with an absolute path to a UTF-8 .txt or .md file. " +
 		"Remember that readers DO NOT have access to your context, so include in message all necessary information to understand its essence. " +
-		"Otherwise, critical details will be lost during information transfer."
+		"Otherwise, critical details will be lost during information transfer. " +
+		"For complex tasks, prefer preparing message in a file and passing it via file_path, as this allows you to refine and plan content in advance."
 
 	// toolMessageListName is MCP method name for message_list operation.
 	toolMessageListName = "message_list"
