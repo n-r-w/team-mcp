@@ -168,7 +168,12 @@ func TestMessageCreateContentSource(t *testing.T) {
 	_, output, err := service.messageCreateTool(
 		t.Context(),
 		nil,
-		messageCreateInput{TopicID: "topic-1", Title: "Title", Content: new(content), FilePath: nil},
+		messageCreateInput{
+			TopicID:  "topic-1",
+			Title:    "Title",
+			Content:  new(content),
+			FilePath: nil,
+		},
 	)
 	require.NoError(t, err)
 	require.Equal(t, "message-1", output.MessageID)
@@ -208,7 +213,12 @@ func TestMessageCreateFileSource(t *testing.T) {
 			_, output, err := service.messageCreateTool(
 				t.Context(),
 				nil,
-				messageCreateInput{TopicID: "topic-1", Title: "Title", Content: nil, FilePath: new(filePath)},
+				messageCreateInput{
+					TopicID:  "topic-1",
+					Title:    "Title",
+					Content:  nil,
+					FilePath: new(filePath),
+				},
 			)
 			require.NoError(t, err)
 			require.Equal(t, "message-1", output.MessageID)
@@ -329,7 +339,12 @@ func TestMessageCreateFileValidation(t *testing.T) {
 			_, _, err := service.messageCreateTool(
 				t.Context(),
 				nil,
-				messageCreateInput{TopicID: "topic-1", Title: "Title", Content: nil, FilePath: new(filePath)},
+				messageCreateInput{
+					TopicID:  "topic-1",
+					Title:    "Title",
+					Content:  nil,
+					FilePath: new(filePath),
+				},
 			)
 			require.ErrorContains(t, err, testCase.expectedErr)
 		})
@@ -346,7 +361,11 @@ func TestMessageGetNotFound(t *testing.T) {
 
 	ctx := t.Context()
 	coordination.EXPECT().MessageGet(ctx, domain.MessageGetRequest{MessageID: "msg-1"}).Return(
-		domain.MessageGetResult{Status: domain.BusinessStatusNotFound, Title: "", Content: ""},
+		domain.MessageGetResult{
+			Status:  domain.BusinessStatusNotFound,
+			Title:   "",
+			Content: "",
+		},
 		nil,
 	)
 
@@ -365,27 +384,51 @@ func TestSaveMessageToFileValidation(t *testing.T) {
 		expectedErr string
 	}{
 		"missing message identifier": {
-			input:       saveMessageToFileInput{MessageID: " ", FilePath: validPath, Mode: string(domain.MessageFileModeCreate)},
+			input:       saveMessageToFileInput{
+				MessageID: " ",
+				FilePath:  validPath,
+				Mode:      string(domain.MessageFileModeCreate),
+			},
 			expectedErr: "message_id is required",
 		},
 		"missing file path": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: " ", Mode: string(domain.MessageFileModeCreate)},
+			input:       saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  " ",
+				Mode:      string(domain.MessageFileModeCreate),
+			},
 			expectedErr: "file_path is required",
 		},
 		"missing mode": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: validPath, Mode: ""},
+			input:       saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  validPath,
+				Mode:      "",
+			},
 			expectedErr: "mode is required",
 		},
 		"unsupported mode": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: validPath, Mode: "append"},
+			input:       saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  validPath,
+				Mode:      "append",
+			},
 			expectedErr: "mode must be create or overwrite",
 		},
 		"relative file path": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: "message.md", Mode: string(domain.MessageFileModeCreate)},
+			input:       saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  "message.md",
+				Mode:      string(domain.MessageFileModeCreate),
+			},
 			expectedErr: "file_path must be absolute",
 		},
 		"unsupported extension": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: filepath.Join(t.TempDir(), "message.MD"), Mode: string(domain.MessageFileModeCreate)},
+			input:       saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  filepath.Join(t.TempDir(), "message.MD"),
+				Mode:      string(domain.MessageFileModeCreate),
+			},
 			expectedErr: "file_path extension must be .txt or .md",
 		},
 	}
@@ -601,7 +644,7 @@ func listRegisteredToolDefinitions(t testing.TB, ctx context.Context, server *mc
 // connectTestClient connects an in-memory MCP client and registers both sessions for cleanup.
 func connectTestClient(t testing.TB, ctx context.Context, server *mcp.Server) (*mcp.ClientSession, error) {
 	client := mcp.NewClient(
-		&mcp.Implementation{ //nolint:exhaustruct // external SDK
+		&mcp.Implementation{ //nolint:exhaustruct_v5 // external SDK
 			Name:    "test-client",
 			Version: testServerVersion,
 		},

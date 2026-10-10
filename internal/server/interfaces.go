@@ -8,7 +8,7 @@ import (
 	"github.com/n-r-w/team-mcp/internal/domain"
 )
 
-//go:generate mockgen -destination=interfaces_mock.go -package=server -source=interfaces.go
+//go:generate go tool mockgen -destination=interfaces_mock.go -package=server -source=interfaces.go
 
 // ICoordination defines application consumed by MCP handlers.
 type ICoordination interface {

@@ -24,13 +24,14 @@ type Service struct {
 func New(options Options) *Service {
 	applyDefaultMetadata(&options)
 
+	//nolint:exhaustruct_v5 // external SDK
 	mcpServer := mcp.NewServer(
-		&mcp.Implementation{ //nolint:exhaustruct // external SDK
+		&mcp.Implementation{
 			Name:    serverName,
 			Version: options.Version,
 			Title:   serverTitle,
 		},
-		&mcp.ServerOptions{ //nolint:exhaustruct // external SDK
+		&mcp.ServerOptions{
 			Instructions: options.SystemPrompt,
 		},
 	)
@@ -98,32 +99,32 @@ func emptyObjectInputSchema() map[string]any {
 
 // register adds desk/topic/message tools to the MCP server.
 func (s *Service) register(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        toolDeskCreateName,
 		Description: s.options.ToolDescriptions.DeskCreate,
 		InputSchema: emptyObjectInputSchema(),
 	}, s.deskCreateTool)
-	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        toolTopicCreateName,
 		Description: s.options.ToolDescriptions.TopicCreate,
 	}, s.topicCreateTool)
-	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        toolTopicListName,
 		Description: s.options.ToolDescriptions.TopicList,
 	}, s.topicListTool)
-	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        toolMessageCreateName,
 		Description: s.options.ToolDescriptions.MessageCreate,
 	}, s.messageCreateTool)
-	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        toolMessageListName,
 		Description: s.options.ToolDescriptions.MessageList,
 	}, s.messageListTool)
-	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        toolMessageGetName,
 		Description: s.options.ToolDescriptions.MessageGet,
 	}, s.messageGetTool)
-	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(server, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        toolSaveMessageToFileName,
 		Description: s.options.ToolDescriptions.SaveMessageToFile,
 	}, s.saveMessageToFileTool)
@@ -351,10 +352,18 @@ func (s *Service) messageGetTool(
 	}
 
 	if result.Status == domain.BusinessStatusNotFound {
-		return nil, messageGetOutput{Status: string(result.Status), Title: "", Content: ""}, nil
+		return nil, messageGetOutput{
+			Status:  string(result.Status),
+			Title:   "",
+			Content: "",
+		}, nil
 	}
 
-	return nil, messageGetOutput{Status: "", Title: result.Title, Content: result.Content}, nil
+	return nil, messageGetOutput{
+		Status:  "",
+		Title:   result.Title,
+		Content: result.Content,
+	}, nil
 }
 
 // saveMessageToFileTool validates the transport contract and delegates ordered export orchestration.

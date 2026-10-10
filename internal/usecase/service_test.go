@@ -181,13 +181,22 @@ func TestMessageCreateStoreFailureWrapsError(t *testing.T) {
 
 	ctx := t.Context()
 	boardStore.EXPECT().CreateMessage(ctx, "topic-1", "Title", "title", "Body").Return(
-		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		domain.MessageMeta{
+			MessageID: "",
+			TopicID:   "",
+			DeskID:    "",
+			Title:     "",
+		},
 		domain.BusinessStatus(""),
 		"",
 		errors.New("store failed"),
 	)
 
-	_, err := service.MessageCreate(ctx, domain.MessageCreateRequest{TopicID: "topic-1", Title: "Title", Content: "Body"})
+	_, err := service.MessageCreate(ctx, domain.MessageCreateRequest{
+		TopicID: "topic-1",
+		Title:   "Title",
+		Content: "Body",
+	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "create message")
 	require.ErrorContains(t, err, "store failed")
@@ -238,7 +247,12 @@ func TestMessageGetNotFound(t *testing.T) {
 
 	ctx := t.Context()
 	boardStore.EXPECT().GetMessage(ctx, "msg-1").Return(
-		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		domain.MessageMeta{
+			MessageID: "",
+			TopicID:   "",
+			DeskID:    "",
+			Title:     "",
+		},
 		"",
 		false,
 		nil,
@@ -267,7 +281,12 @@ func TestSaveMessageToFileSuccess(t *testing.T) {
 
 	gomock.InOrder(
 		boardStore.EXPECT().GetMessage(ctx, request.MessageID).Return(
-			domain.MessageMeta{MessageID: request.MessageID, TopicID: "topic-1", DeskID: "desk-1", Title: "Title"},
+			domain.MessageMeta{
+				MessageID: request.MessageID,
+				TopicID:   "topic-1",
+				DeskID:    "desk-1",
+				Title:     "Title",
+			},
 			content,
 			true,
 			nil,
@@ -296,7 +315,12 @@ func TestSaveMessageToFileNotFound(t *testing.T) {
 	}
 
 	boardStore.EXPECT().GetMessage(ctx, request.MessageID).Return(
-		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		domain.MessageMeta{
+			MessageID: "",
+			TopicID:   "",
+			DeskID:    "",
+			Title:     "",
+		},
 		"",
 		false,
 		nil,
@@ -324,7 +348,12 @@ func TestSaveMessageToFileLookupError(t *testing.T) {
 	}
 
 	boardStore.EXPECT().GetMessage(ctx, request.MessageID).Return(
-		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		domain.MessageMeta{
+			MessageID: "",
+			TopicID:   "",
+			DeskID:    "",
+			Title:     "",
+		},
 		"",
 		false,
 		lookupErr,
@@ -352,7 +381,12 @@ func TestSaveMessageToFileWriterError(t *testing.T) {
 	}
 
 	boardStore.EXPECT().GetMessage(ctx, request.MessageID).Return(
-		domain.MessageMeta{MessageID: request.MessageID, TopicID: "topic-1", DeskID: "desk-1", Title: "Title"},
+		domain.MessageMeta{
+			MessageID: request.MessageID,
+			TopicID:   "topic-1",
+			DeskID:    "desk-1",
+			Title:     "Title",
+		},
 		"payload",
 		true,
 		nil,
@@ -461,13 +495,22 @@ func runMessageCreateDuplicateTitleScenario(t *testing.T) (domain.MessageCreateR
 		"title",
 		"Body",
 	).Return(
-		domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""},
+		domain.MessageMeta{
+			MessageID: "",
+			TopicID:   "",
+			DeskID:    "",
+			Title:     "",
+		},
 		domain.BusinessStatusDuplicateTitle,
 		"msg-existing",
 		nil,
 	)
 
-	result, err := service.MessageCreate(ctx, domain.MessageCreateRequest{TopicID: "topic-1", Title: "Title", Content: "Body"})
+	result, err := service.MessageCreate(ctx, domain.MessageCreateRequest{
+		TopicID: "topic-1",
+		Title:   "Title",
+		Content: "Body",
+	})
 
 	return result, logOutput.String(), err
 }

@@ -158,7 +158,7 @@ func buildLogger(cfg *config.Config) error {
 		return err
 	}
 
-	handlerOptions := &slog.HandlerOptions{ //nolint:exhaustruct // external SDK
+	handlerOptions := &slog.HandlerOptions{ //nolint:exhaustruct_v5 // external SDK
 		Level: level,
 	}
 	handler := slog.NewJSONHandler(os.Stderr, handlerOptions)

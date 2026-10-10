@@ -188,7 +188,11 @@ func (s *Service) MessageGet(ctx context.Context, request domain.MessageGetReque
 	}
 
 	if !found {
-		return domain.MessageGetResult{Status: domain.BusinessStatusNotFound, Title: "", Content: ""}, nil
+		return domain.MessageGetResult{
+			Status:  domain.BusinessStatusNotFound,
+			Title:   "",
+			Content: "",
+		}, nil
 	}
 
 	return domain.MessageGetResult{
