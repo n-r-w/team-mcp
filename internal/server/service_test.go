@@ -384,7 +384,7 @@ func TestSaveMessageToFileValidation(t *testing.T) {
 		expectedErr string
 	}{
 		"missing message identifier": {
-			input:       saveMessageToFileInput{
+			input: saveMessageToFileInput{
 				MessageID: " ",
 				FilePath:  validPath,
 				Mode:      string(domain.MessageFileModeCreate),
@@ -392,7 +392,7 @@ func TestSaveMessageToFileValidation(t *testing.T) {
 			expectedErr: "message_id is required",
 		},
 		"missing file path": {
-			input:       saveMessageToFileInput{
+			input: saveMessageToFileInput{
 				MessageID: "msg-1",
 				FilePath:  " ",
 				Mode:      string(domain.MessageFileModeCreate),
@@ -400,7 +400,7 @@ func TestSaveMessageToFileValidation(t *testing.T) {
 			expectedErr: "file_path is required",
 		},
 		"missing mode": {
-			input:       saveMessageToFileInput{
+			input: saveMessageToFileInput{
 				MessageID: "msg-1",
 				FilePath:  validPath,
 				Mode:      "",
@@ -408,7 +408,7 @@ func TestSaveMessageToFileValidation(t *testing.T) {
 			expectedErr: "mode is required",
 		},
 		"unsupported mode": {
-			input:       saveMessageToFileInput{
+			input: saveMessageToFileInput{
 				MessageID: "msg-1",
 				FilePath:  validPath,
 				Mode:      "append",
@@ -416,7 +416,7 @@ func TestSaveMessageToFileValidation(t *testing.T) {
 			expectedErr: "mode must be create or overwrite",
 		},
 		"relative file path": {
-			input:       saveMessageToFileInput{
+			input: saveMessageToFileInput{
 				MessageID: "msg-1",
 				FilePath:  "message.md",
 				Mode:      string(domain.MessageFileModeCreate),
@@ -424,7 +424,7 @@ func TestSaveMessageToFileValidation(t *testing.T) {
 			expectedErr: "file_path must be absolute",
 		},
 		"unsupported extension": {
-			input:       saveMessageToFileInput{
+			input: saveMessageToFileInput{
 				MessageID: "msg-1",
 				FilePath:  filepath.Join(t.TempDir(), "message.MD"),
 				Mode:      string(domain.MessageFileModeCreate),
