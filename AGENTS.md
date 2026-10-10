@@ -9,7 +9,7 @@ Team MCP Server.
 The agent orchestrator defines a channel-based interaction model, and sub-agents exchange messages only through it predictably and in isolation.
 
 ## MCP Tools
-1. **desk_create:** Creates a collaboration desk. 
+1. **desk_create:** Creates a collaboration desk.
 2. **topic_create:** Creates a topic in a desk.
 3. **topic_list:** Lists ordered topic headers for a desk.
 4. **message_create:** Creates a message in a topic.
@@ -30,7 +30,7 @@ Full schema:
 7. `internal/config`: Configuration management.
 
 ## Tech stack
-1. go 1.26
+1. go 1.27
 2. `github.com/modelcontextprotocol/go-sdk` for MCP server implementation
 3. `github.com/stretchr/testify` for tests
 4. `go.uber.org/mock` (no custom mocks, `//go:generate` directives in interface files)

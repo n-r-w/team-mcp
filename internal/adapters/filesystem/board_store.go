@@ -1161,12 +1161,21 @@ func emptyTopicHeader() domain.TopicHeader {
 
 // emptyMessageMeta keeps not-found paths explicit and lint-clean.
 func emptyMessageMeta() domain.MessageMeta {
-	return domain.MessageMeta{MessageID: "", TopicID: "", DeskID: "", Title: ""}
+	return domain.MessageMeta{
+		MessageID: "",
+		TopicID:   "",
+		DeskID:    "",
+		Title:     "",
+	}
 }
 
 // emptyBoardTopicState keeps unresolved topic paths explicit and lint-clean.
 func emptyBoardTopicState() boardTopicState {
-	return boardTopicState{Version: 0, Messages: nil, MessageByNormalizedTitle: nil}
+	return boardTopicState{
+		Version:                  0,
+		Messages:                 nil,
+		MessageByNormalizedTitle: nil,
+	}
 }
 
 // emptyMessageHeader keeps unresolved message-header paths explicit and lint-clean.

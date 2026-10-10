@@ -8,7 +8,7 @@ import (
 	"github.com/n-r-w/team-mcp/internal/domain"
 )
 
-//go:generate mockgen -destination=interfaces_mock.go -package=server -source=interfaces.go
+//go:generate go tool mockgen -destination=interfaces_mock.go -package=server -source=interfaces.go
 
 // ICoordination defines application consumed by MCP handlers.
 type ICoordination interface {
@@ -26,6 +26,12 @@ type ICoordination interface {
 	MessageGet(ctx context.Context, request domain.MessageGetRequest) (domain.MessageGetResult, error)
 	// SaveMessageToFile writes a message payload to a user-selected file.
 	SaveMessageToFile(ctx context.Context, request domain.SaveMessageToFileRequest) (domain.SaveMessageToFileResult, error)
+}
+
+// IMessageFileReader defines source file boundary of message_create.
+type IMessageFileReader interface {
+	// ReadMessage returns text of message source file.
+	ReadMessage(ctx context.Context, filePath string) (string, error)
 }
 
 // IMCPRuntime defines MCP runtime consumed by server adapter Run method.

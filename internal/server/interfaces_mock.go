@@ -147,6 +147,45 @@ func (mr *MockICoordinationMockRecorder) TopicList(ctx, request any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TopicList", reflect.TypeOf((*MockICoordination)(nil).TopicList), ctx, request)
 }
 
+// MockIMessageFileReader is a mock of IMessageFileReader interface.
+type MockIMessageFileReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockIMessageFileReaderMockRecorder
+	isgomock struct{}
+}
+
+// MockIMessageFileReaderMockRecorder is the mock recorder for MockIMessageFileReader.
+type MockIMessageFileReaderMockRecorder struct {
+	mock *MockIMessageFileReader
+}
+
+// NewMockIMessageFileReader creates a new mock instance.
+func NewMockIMessageFileReader(ctrl *gomock.Controller) *MockIMessageFileReader {
+	mock := &MockIMessageFileReader{ctrl: ctrl}
+	mock.recorder = &MockIMessageFileReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIMessageFileReader) EXPECT() *MockIMessageFileReaderMockRecorder {
+	return m.recorder
+}
+
+// ReadMessage mocks base method.
+func (m *MockIMessageFileReader) ReadMessage(ctx context.Context, filePath string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadMessage", ctx, filePath)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadMessage indicates an expected call of ReadMessage.
+func (mr *MockIMessageFileReaderMockRecorder) ReadMessage(ctx, filePath any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadMessage", reflect.TypeOf((*MockIMessageFileReader)(nil).ReadMessage), ctx, filePath)
+}
+
 // MockIMCPRuntime is a mock of IMCPRuntime interface.
 type MockIMCPRuntime struct {
 	ctrl     *gomock.Controller

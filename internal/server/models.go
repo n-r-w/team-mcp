@@ -5,6 +5,7 @@ type Options struct {
 	Version             string
 	MaxTitleLength      int
 	CoordinationUseCase ICoordination
+	MessageFileReader   IMessageFileReader
 	ToolDescriptions    ToolDescriptions
 	SystemPrompt        string
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/n-r-w/team-mcp/internal/domain"
 )
 
-//go:generate mockgen -destination=interfaces_mock.go -package=usecase -source=interfaces.go
+//go:generate go tool mockgen -destination=interfaces_mock.go -package=usecase -source=interfaces.go
 
 // IMessageFileWriter defines the destination file boundary for message exports.
 type IMessageFileWriter interface {

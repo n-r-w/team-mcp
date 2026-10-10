@@ -11,10 +11,10 @@ The server exposes a desk-topic-message model so agents can coordinate work pred
 - `desk_create` — Creates a collaboration desk and returns `desk_id`
 - `topic_create` — Creates a topic in a desk and returns `topic_id`
 - `topic_list` — Lists topic headers for a desk in creation order
-- `message_create` — Creates a message from `content` or an absolute UTF-8 `.txt`/`.md` `file_path` and returns `message_id`
+- `message_create` — Creates a message from `content` or an absolute UTF-8 `.txt`/`.md` `file_path` inside the user's home directory or the temporary directory, and returns `message_id`
 - `message_list` — Lists message headers for a topic in creation order
 - `message_get` — Returns full message payload by `message_id`
-- `save_message_to_file` — Saves the exact message payload to an absolute `.txt` or `.md` path under the current user's home directory. `mode` must be `create` or `overwrite`; missing parent directories are created automatically
+- `save_message_to_file` — Saves the exact message payload to an absolute `.txt` or `.md` path inside the user's home directory or the temporary directory. `mode` must be `create` or `overwrite`; missing parent directories are created automatically
 
 ### 🚨 CRITICAL: Role and tool access policy
 
@@ -89,8 +89,9 @@ task build
 - `TEAM_MCP_TOOL_SAVE_MESSAGE_TO_FILE_DESC` (optional, default: built-in `save_message_to_file` description)
   * Overrides MCP `save_message_to_file` tool description.
 
-- `TEAM_MCP_SYSTEM_PROMPT` (optional, default: built-in server instructions)
-  * Overrides MCP server instructions exposed via `ServerOptions.Instructions`.
+- `TEAM_MCP_SYSTEM_PROMPT` (optional, default: no server instructions)
+  * Sets MCP server instructions exposed via `ServerOptions.Instructions`.
+  * Not safe for rules that subagents need in Claude Code: Claude Code passes server instructions only to the main agent, and subagents get only tool descriptions. Put such rules into the description of the tool that the rule concerns, with `TEAM_MCP_TOOL_*_DESC`.
 
 - `TEAM_MCP_LOG_LEVEL` (optional, default: `info`)
   * Log level for structured JSON logs.
@@ -125,3 +126,4 @@ Notes:
 
 - The shared message directory is the authoritative runtime store for desk, topic, message, and payload state. Read [Disk Storage Layout](./docs/disk-storage-layout.md) for details.
 - Expired desks are removed by the background TTL collector.
+- `message_create` reads `file_path` and `save_message_to_file` writes `file_path` only inside the user's home directory or the temporary directory. The temporary directory is the system temporary directory (`$TMPDIR` on Unix, `%TMP%` on Windows) and, on Unix, also `/tmp`. Symbolic links that lead outside these directories are rejected.

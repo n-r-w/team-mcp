@@ -598,7 +598,12 @@ func TestBoardStoreCreateTopicRetriesOnVersionConflict(t *testing.T) {
 			defer wg.Done()
 			<-start
 			header, status, created, createErr := store.CreateTopic(ctx, deskID, "Shared", normalizeTitleForTest("Shared"))
-			results <- topicCreateOutcome{Header: header, Status: status, Created: created, Err: createErr}
+			results <- topicCreateOutcome{
+				Header:  header,
+				Status:  status,
+				Created: created,
+				Err:     createErr,
+			}
 		}()
 
 		go func() {
@@ -610,7 +615,12 @@ func TestBoardStoreCreateTopicRetriesOnVersionConflict(t *testing.T) {
 				"Shared",
 				normalizeTitleForTest("Shared"),
 			)
-			results <- topicCreateOutcome{Header: header, Status: status, Created: created, Err: createErr}
+			results <- topicCreateOutcome{
+				Header:  header,
+				Status:  status,
+				Created: created,
+				Err:     createErr,
+			}
 		}()
 
 		close(start)
@@ -673,7 +683,12 @@ func TestBoardStoreCreateMessageRetriesOnVersionConflict(t *testing.T) {
 				normalizeTitleForTest("Shared Message"),
 				"# payload",
 			)
-			results <- messageCreateOutcome{Meta: meta, Status: status, ExistingMessageID: existingMessageID, Err: createErr}
+			results <- messageCreateOutcome{
+				Meta:              meta,
+				Status:            status,
+				ExistingMessageID: existingMessageID,
+				Err:               createErr,
+			}
 		}()
 
 		go func() {
@@ -686,7 +701,12 @@ func TestBoardStoreCreateMessageRetriesOnVersionConflict(t *testing.T) {
 				normalizeTitleForTest("SHARED   MESSAGE"),
 				"# payload duplicate",
 			)
-			results <- messageCreateOutcome{Meta: meta, Status: status, ExistingMessageID: existingMessageID, Err: createErr}
+			results <- messageCreateOutcome{
+				Meta:              meta,
+				Status:            status,
+				ExistingMessageID: existingMessageID,
+				Err:               createErr,
+			}
 		}()
 
 		close(start)
@@ -763,7 +783,12 @@ func TestBoardStoreCreateMessagePreservesConcurrentMessages(t *testing.T) {
 				normalizeTitleForTest("First"),
 				"# first",
 			)
-			results <- messageCreateOutcome{Meta: meta, Status: status, ExistingMessageID: existingMessageID, Err: createErr}
+			results <- messageCreateOutcome{
+				Meta:              meta,
+				Status:            status,
+				ExistingMessageID: existingMessageID,
+				Err:               createErr,
+			}
 		}()
 
 		go func() {
@@ -776,7 +801,12 @@ func TestBoardStoreCreateMessagePreservesConcurrentMessages(t *testing.T) {
 				normalizeTitleForTest("Second"),
 				"# second",
 			)
-			results <- messageCreateOutcome{Meta: meta, Status: status, ExistingMessageID: existingMessageID, Err: createErr}
+			results <- messageCreateOutcome{
+				Meta:              meta,
+				Status:            status,
+				ExistingMessageID: existingMessageID,
+				Err:               createErr,
+			}
 		}()
 
 		close(start)

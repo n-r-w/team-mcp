@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,6 +23,7 @@ func newTestOptions(coordination ICoordination) Options {
 		Version:             testServerVersion,
 		MaxTitleLength:      200,
 		CoordinationUseCase: coordination,
+		MessageFileReader:   nil,
 		ToolDescriptions: ToolDescriptions{
 			DeskCreate:        "",
 			TopicCreate:       "",
@@ -168,52 +168,53 @@ func TestMessageCreateContentSource(t *testing.T) {
 	_, output, err := service.messageCreateTool(
 		t.Context(),
 		nil,
-		messageCreateInput{TopicID: "topic-1", Title: "Title", Content: new(content), FilePath: nil},
+		messageCreateInput{
+			TopicID:  "topic-1",
+			Title:    "Title",
+			Content:  new(content),
+			FilePath: nil,
+		},
 	)
 	require.NoError(t, err)
 	require.Equal(t, "message-1", output.MessageID)
 }
 
-// TestMessageCreateFileSource verifies supported text files reach the coordination use case byte-for-byte.
+// TestMessageCreateFileSource verifies message_create stores text that file reader returns.
 func TestMessageCreateFileSource(t *testing.T) {
 	t.Parallel()
 
-	testCases := map[string]string{
-		"txt":          "message.txt",
-		"uppercase md": "message.MD",
-	}
+	content := "  first line\n" + strings.Repeat("payload line\n", 5_000)
+	filePath := "/tmp/message.md"
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	reader := NewMockIMessageFileReader(controller)
+	options := newTestOptions(coordination)
+	options.MessageFileReader = reader
+	service := New(options)
+	reader.EXPECT().ReadMessage(t.Context(), filePath).Return(content, nil)
+	coordination.EXPECT().MessageCreate(t.Context(), domain.MessageCreateRequest{
+		TopicID: "topic-1",
+		Title:   "Title",
+		Content: content,
+	}).Return(domain.MessageCreateResult{
+		Status:            domain.BusinessStatusOK,
+		MessageID:         "message-1",
+		ExistingMessageID: "",
+		StatusMessage:     "",
+	}, nil)
 
-	for name, fileName := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			content := "  first line\n" + strings.Repeat("payload line\n", 5_000)
-			filePath := filepath.Join(t.TempDir(), fileName)
-			require.NoError(t, os.WriteFile(filePath, []byte(content), 0o600))
-
-			controller := gomock.NewController(t)
-			coordination := NewMockICoordination(controller)
-			service := New(newTestOptions(coordination))
-			coordination.EXPECT().MessageCreate(t.Context(), domain.MessageCreateRequest{
-				TopicID: "topic-1",
-				Title:   "Title",
-				Content: content,
-			}).Return(domain.MessageCreateResult{
-				Status:            domain.BusinessStatusOK,
-				MessageID:         "message-1",
-				ExistingMessageID: "",
-				StatusMessage:     "",
-			}, nil)
-
-			_, output, err := service.messageCreateTool(
-				t.Context(),
-				nil,
-				messageCreateInput{TopicID: "topic-1", Title: "Title", Content: nil, FilePath: new(filePath)},
-			)
-			require.NoError(t, err)
-			require.Equal(t, "message-1", output.MessageID)
-		})
-	}
+	_, output, err := service.messageCreateTool(
+		t.Context(),
+		nil,
+		messageCreateInput{
+			TopicID:  "topic-1",
+			Title:    "Title",
+			Content:  nil,
+			FilePath: new(filePath),
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "message-1", output.MessageID)
 }
 
 // TestMessageCreateSourceValidation verifies exactly one non-blank message source is required.
@@ -269,71 +270,30 @@ func TestMessageCreateSourceValidation(t *testing.T) {
 	}
 }
 
-// TestMessageCreateFileValidation verifies file paths and payloads satisfy the file-source contract.
-func TestMessageCreateFileValidation(t *testing.T) {
+// TestMessageCreateFileReadError verifies message_create returns file reader error and creates no message.
+func TestMessageCreateFileReadError(t *testing.T) {
 	t.Parallel()
 
-	testCases := map[string]struct {
-		preparePath func(t *testing.T) string
-		expectedErr string
-	}{
-		"relative path": {
-			preparePath: func(_ *testing.T) string { return "message.md" },
-			expectedErr: "file_path must be absolute",
-		},
-		"unsupported extension": {
-			preparePath: func(t *testing.T) string { return filepath.Join(t.TempDir(), "message.json") },
-			expectedErr: "file_path must have a .txt or .md extension",
-		},
-		"missing file": {
-			preparePath: func(t *testing.T) string { return filepath.Join(t.TempDir(), "missing.md") },
-			expectedErr: "read file_path",
-		},
-		"directory": {
-			preparePath: func(t *testing.T) string {
-				path := filepath.Join(t.TempDir(), "directory.md")
-				require.NoError(t, os.Mkdir(path, 0o700))
+	filePath := "/etc/message.md"
+	controller := gomock.NewController(t)
+	reader := NewMockIMessageFileReader(controller)
+	options := newTestOptions(NewMockICoordination(controller))
+	options.MessageFileReader = reader
+	service := New(options)
+	readErr := errors.New("file_path must be inside allowed directory")
+	reader.EXPECT().ReadMessage(t.Context(), filePath).Return("", readErr)
 
-				return path
-			},
-			expectedErr: "file_path must reference a regular file",
+	_, _, err := service.messageCreateTool(
+		t.Context(),
+		nil,
+		messageCreateInput{
+			TopicID:  "topic-1",
+			Title:    "Title",
+			Content:  nil,
+			FilePath: new(filePath),
 		},
-		"blank file": {
-			preparePath: func(t *testing.T) string {
-				path := filepath.Join(t.TempDir(), "blank.txt")
-				require.NoError(t, os.WriteFile(path, []byte(" \n\t"), 0o600))
-
-				return path
-			},
-			expectedErr: "file content is required",
-		},
-		"invalid UTF-8": {
-			preparePath: func(t *testing.T) string {
-				path := filepath.Join(t.TempDir(), "invalid.md")
-				require.NoError(t, os.WriteFile(path, []byte{0xff, 'a'}, 0o600))
-
-				return path
-			},
-			expectedErr: "file content must be valid UTF-8",
-		},
-	}
-
-	for name, testCase := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			filePath := testCase.preparePath(t)
-			controller := gomock.NewController(t)
-			service := New(newTestOptions(NewMockICoordination(controller)))
-
-			_, _, err := service.messageCreateTool(
-				t.Context(),
-				nil,
-				messageCreateInput{TopicID: "topic-1", Title: "Title", Content: nil, FilePath: new(filePath)},
-			)
-			require.ErrorContains(t, err, testCase.expectedErr)
-		})
-	}
+	)
+	require.ErrorIs(t, err, readErr)
 }
 
 // TestMessageGetNotFound verifies message_get maps business not_found status into output status.
@@ -346,7 +306,11 @@ func TestMessageGetNotFound(t *testing.T) {
 
 	ctx := t.Context()
 	coordination.EXPECT().MessageGet(ctx, domain.MessageGetRequest{MessageID: "msg-1"}).Return(
-		domain.MessageGetResult{Status: domain.BusinessStatusNotFound, Title: "", Content: ""},
+		domain.MessageGetResult{
+			Status:  domain.BusinessStatusNotFound,
+			Title:   "",
+			Content: "",
+		},
 		nil,
 	)
 
@@ -365,27 +329,51 @@ func TestSaveMessageToFileValidation(t *testing.T) {
 		expectedErr string
 	}{
 		"missing message identifier": {
-			input:       saveMessageToFileInput{MessageID: " ", FilePath: validPath, Mode: string(domain.MessageFileModeCreate)},
+			input: saveMessageToFileInput{
+				MessageID: " ",
+				FilePath:  validPath,
+				Mode:      string(domain.MessageFileModeCreate),
+			},
 			expectedErr: "message_id is required",
 		},
 		"missing file path": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: " ", Mode: string(domain.MessageFileModeCreate)},
+			input: saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  " ",
+				Mode:      string(domain.MessageFileModeCreate),
+			},
 			expectedErr: "file_path is required",
 		},
 		"missing mode": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: validPath, Mode: ""},
+			input: saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  validPath,
+				Mode:      "",
+			},
 			expectedErr: "mode is required",
 		},
 		"unsupported mode": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: validPath, Mode: "append"},
+			input: saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  validPath,
+				Mode:      "append",
+			},
 			expectedErr: "mode must be create or overwrite",
 		},
 		"relative file path": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: "message.md", Mode: string(domain.MessageFileModeCreate)},
+			input: saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  "message.md",
+				Mode:      string(domain.MessageFileModeCreate),
+			},
 			expectedErr: "file_path must be absolute",
 		},
 		"unsupported extension": {
-			input:       saveMessageToFileInput{MessageID: "msg-1", FilePath: filepath.Join(t.TempDir(), "message.MD"), Mode: string(domain.MessageFileModeCreate)},
+			input: saveMessageToFileInput{
+				MessageID: "msg-1",
+				FilePath:  filepath.Join(t.TempDir(), "message.MD"),
+				Mode:      string(domain.MessageFileModeCreate),
+			},
 			expectedErr: "file_path extension must be .txt or .md",
 		},
 	}
@@ -512,6 +500,7 @@ func TestNewAppliesCustomDescriptions(t *testing.T) {
 		Version:             testServerVersion,
 		MaxTitleLength:      200,
 		CoordinationUseCase: coordination,
+		MessageFileReader:   nil,
 		ToolDescriptions: ToolDescriptions{
 			DeskCreate:        "custom desk_create",
 			TopicCreate:       "custom topic_create",
@@ -540,7 +529,7 @@ func TestNewAppliesCustomDescriptions(t *testing.T) {
 	require.Equal(t, "custom system prompt", service.options.SystemPrompt)
 }
 
-// TestNewFallsBackToDefaultDescriptions verifies empty overrides preserve default descriptions and prompt.
+// TestNewFallsBackToDefaultDescriptions verifies empty overrides give default descriptions and no server instructions.
 func TestNewFallsBackToDefaultDescriptions(t *testing.T) {
 	t.Parallel()
 
@@ -561,7 +550,54 @@ func TestNewFallsBackToDefaultDescriptions(t *testing.T) {
 	require.Equal(t, toolMessageListDesc, registeredTools[toolMessageListName])
 	require.Equal(t, toolMessageGetDesc, registeredTools[toolMessageGetName])
 	require.Equal(t, toolSaveMessageToFileDesc, registeredTools[toolSaveMessageToFileName])
-	require.Equal(t, systemPrompt, service.options.SystemPrompt)
+	require.Empty(t, service.options.SystemPrompt)
+}
+
+// TestDefaultDescriptionsFitClaudeCodeLimit verifies Claude Code shows default descriptions and instructions in full.
+func TestDefaultDescriptionsFitClaudeCodeLimit(t *testing.T) {
+	t.Parallel()
+
+	// claudeCodeDescriptionLimit is the smallest cap of Claude Code on MCP tool descriptions and server instructions.
+	// Byte length is not less than UTF-16 length that Claude Code counts.
+	const claudeCodeDescriptionLimit = 2048
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(newTestOptions(coordination))
+
+	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
+	require.True(t, ok)
+
+	registeredTools, err := listRegisteredToolDescriptions(t, t.Context(), runtimeServer)
+	require.NoError(t, err)
+
+	texts := map[string]string{"server instructions": service.options.SystemPrompt}
+	for name, description := range registeredTools {
+		texts[name] = description
+	}
+
+	for name, text := range texts {
+		require.LessOrEqual(t, len(text), claudeCodeDescriptionLimit, "%s has %d bytes", name, len(text))
+	}
+}
+
+// TestDefaultDescriptionsHoldKeepIDsRule verifies orchestrators, authors, and readers of desk get rule to keep IDs.
+func TestDefaultDescriptionsHoldKeepIDsRule(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(newTestOptions(coordination))
+
+	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
+	require.True(t, ok)
+
+	registeredTools, err := listRegisteredToolDescriptions(t, t.Context(), runtimeServer)
+	require.NoError(t, err)
+
+	for _, name := range []string{toolDeskCreateName, toolMessageCreateName, toolMessageGetName} {
+		require.Contains(t, registeredTools[name], keepIDsRule, name)
+	}
 }
 
 // listRegisteredToolDescriptions reads MCP server tool registry into name-to-description mapping.
@@ -601,7 +637,7 @@ func listRegisteredToolDefinitions(t testing.TB, ctx context.Context, server *mc
 // connectTestClient connects an in-memory MCP client and registers both sessions for cleanup.
 func connectTestClient(t testing.TB, ctx context.Context, server *mcp.Server) (*mcp.ClientSession, error) {
 	client := mcp.NewClient(
-		&mcp.Implementation{ //nolint:exhaustruct // external SDK
+		&mcp.Implementation{ //nolint:exhaustruct_v5 // external SDK
 			Name:    "test-client",
 			Version: testServerVersion,
 		},
