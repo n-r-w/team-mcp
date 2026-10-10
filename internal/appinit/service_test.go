@@ -48,6 +48,39 @@ func TestNewFailsWhenUserHomeUnavailable(t *testing.T) {
 	require.ErrorContains(t, err, "resolve user home directory")
 }
 
+// TestMessageFileDirsIncludeHomeAndTemporaryDirectories verifies message files may live in home and temporary directories.
+func TestMessageFileDirsIncludeHomeAndTemporaryDirectories(t *testing.T) {
+	t.Cleanup(lockAppinitProcessGlobals(t))
+
+	homeDir := t.TempDir()
+	tempDir := t.TempDir()
+	tempVariable := "TMPDIR"
+	if runtime.GOOS == "windows" {
+		tempVariable = "TMP"
+	}
+	t.Setenv(tempVariable, tempDir)
+
+	expected := []string{homeDir, tempDir}
+	if runtime.GOOS != "windows" {
+		expected = append(expected, "/tmp")
+	}
+
+	require.Equal(t, expected, messageFileDirs(homeDir))
+}
+
+// TestMessageFileDirsListUnixTempDirOnce verifies Unix /tmp appears once when it is system temporary directory.
+func TestMessageFileDirsListUnixTempDirOnce(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix temporary directory")
+	}
+	t.Cleanup(lockAppinitProcessGlobals(t))
+
+	homeDir := t.TempDir()
+	t.Setenv("TMPDIR", "/tmp")
+
+	require.Equal(t, []string{homeDir, "/tmp"}, messageFileDirs(homeDir))
+}
+
 // lockAppinitProcessGlobals serializes tests that mutate the default logger, standard streams, or home environment.
 func lockAppinitProcessGlobals(t testing.TB) func() {
 	t.Helper()

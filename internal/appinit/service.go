@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/n-r-w/team-mcp/internal/adapters/filesystem"
@@ -19,6 +20,8 @@ import (
 const (
 	// defaultCleanupStopTimeout caps wait time for lifecycle collector stop during shutdown.
 	defaultCleanupStopTimeout = 2 * time.Second
+	// unixTempDir is Unix temporary directory that agents use in message file paths.
+	unixTempDir = "/tmp"
 )
 
 // lifecycleRunner executes periodic cleanup loops.
@@ -53,10 +56,10 @@ func New(cfg *config.Config, version string) (*Service, error) {
 		return nil, fmt.Errorf("resolve user home directory: %w", homeDirErr)
 	}
 
-	messageFileWriter := messagefile.New(homeDir)
+	messageFileService := messagefile.New(messageFileDirs(homeDir))
 	usecaseService := usecase.New(
 		boardStore,
-		messageFileWriter,
+		messageFileService,
 		usecase.Options{SessionTTL: cfg.SessionTTL, MaxTitleLength: cfg.MaxTitleLength},
 	)
 
@@ -64,6 +67,7 @@ func New(cfg *config.Config, version string) (*Service, error) {
 		Version:             version,
 		MaxTitleLength:      cfg.MaxTitleLength,
 		CoordinationUseCase: usecaseService,
+		MessageFileReader:   messageFileService,
 		ToolDescriptions: server.ToolDescriptions{
 			DeskCreate:        cfg.ToolDeskCreateDesc,
 			TopicCreate:       cfg.ToolTopicCreateDesc,
@@ -83,6 +87,17 @@ func New(cfg *config.Config, version string) (*Service, error) {
 		},
 		cleanupStopTimeout: defaultCleanupStopTimeout,
 	}, nil
+}
+
+// messageFileDirs lists directories where agents read and write message files.
+func messageFileDirs(homeDir string) []string {
+	tempDir := os.TempDir()
+	dirs := []string{homeDir, tempDir}
+	if runtime.GOOS != "windows" && tempDir != unixTempDir {
+		dirs = append(dirs, unixTempDir)
+	}
+
+	return dirs
 }
 
 // logStartupConfig writes effective startup configuration values required for operational visibility.

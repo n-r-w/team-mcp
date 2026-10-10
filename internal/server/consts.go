@@ -45,9 +45,10 @@ const (
 - Topics to use: {List of relevant topics IDs and their purposes}.
 - MUST read before start: {List of relevant message IDs}.
 - MUST post: {What kind of messages to post, in which topics, and when}.
-- MUST save results of your work as messages, instead of duplicating these results in your response. Include in response only:
+- MUST save full results of your work as messages. Include in response only:
 	- Reference to messages in desk with full results.
-	- Brief summary of your job: findings, conclusions, changes, etc."`
+	- Brief summary of your job: findings, conclusions, changes, etc.
+	- Fields that your agent definition requires in response."`
 
 	// toolTopicCreateName is MCP method name for topic_create operation.
 	toolTopicCreateName = "topic_create"
@@ -63,7 +64,7 @@ const (
 	toolMessageCreateName = "message_create"
 	// toolMessageCreateDesc explains content-source and duplicate-title semantics for message_create.
 	toolMessageCreateDesc = "Creates new message in topic and returns message_id. " +
-		"Provide exactly one content source: content with message text, or file_path with an absolute path to a UTF-8 .txt or .md file. " +
+		"Provide exactly one content source: content with message text, or file_path with an absolute path to a UTF-8 .txt or .md file inside user home directory or temporary directory (system temporary directory; on Unix also /tmp). " +
 		"Remember that readers DO NOT have access to your context, so include in message all necessary information to understand its essence. " +
 		"Otherwise, critical details will be lost during information transfer. " +
 		"For complex tasks, prefer preparing message in a file and passing it via file_path, as this allows you to refine and plan content in advance."
@@ -81,7 +82,8 @@ const (
 	// toolSaveMessageToFileName is MCP method name for save_message_to_file operation.
 	toolSaveMessageToFileName = "save_message_to_file"
 	// toolSaveMessageToFileDesc explains constrained message export contract.
-	toolSaveMessageToFileDesc = "Saves a message payload to an absolute .txt or .md file under current user home directory. Mode must be create or overwrite."
+	toolSaveMessageToFileDesc = "Saves a message payload to an absolute .txt or .md file inside user home directory or temporary directory " +
+		"(system temporary directory; on Unix also /tmp). Mode must be create or overwrite."
 
 	// serverName is transport-visible runtime server identifier.
 	serverName = "team-mcp"

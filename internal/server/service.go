@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -211,7 +209,7 @@ func (s *Service) messageCreateTool(
 		return nil, messageCreateOutput{}, err
 	}
 
-	content, err := resolveMessageContent(input)
+	content, err := s.resolveMessageContent(ctx, input)
 	if err != nil {
 		return nil, messageCreateOutput{}, err
 	}
@@ -252,7 +250,7 @@ func (s *Service) messageCreateTool(
 }
 
 // resolveMessageContent enforces one message source and preserves the selected text unchanged.
-func resolveMessageContent(input messageCreateInput) (string, error) {
+func (s *Service) resolveMessageContent(ctx context.Context, input messageCreateInput) (string, error) {
 	if input.Content != nil && input.FilePath != nil {
 		return "", errors.New("content and file_path are mutually exclusive")
 	}
@@ -269,42 +267,9 @@ func resolveMessageContent(input messageCreateInput) (string, error) {
 		return *input.Content, nil
 	}
 
-	return readMessageContentFile(*input.FilePath)
-}
-
-// readMessageContentFile loads UTF-8 text from an absolute Markdown or text file path.
-func readMessageContentFile(filePath string) (string, error) {
-	if !filepath.IsAbs(filePath) {
-		return "", errors.New("file_path must be absolute")
-	}
-
-	extension := strings.ToLower(filepath.Ext(filePath))
-	if extension != ".txt" && extension != ".md" {
-		return "", errors.New("file_path must have a .txt or .md extension")
-	}
-
-	cleanPath := filepath.Clean(filePath)
-	fileInfo, err := os.Stat(cleanPath)
+	content, err := s.options.MessageFileReader.ReadMessage(ctx, *input.FilePath)
 	if err != nil {
-		return "", fmt.Errorf("read file_path: %w", err)
-	}
-
-	if !fileInfo.Mode().IsRegular() {
-		return "", errors.New("file_path must reference a regular file")
-	}
-
-	payload, err := os.ReadFile(cleanPath)
-	if err != nil {
-		return "", fmt.Errorf("read file_path: %w", err)
-	}
-
-	if !utf8.Valid(payload) {
-		return "", errors.New("file content must be valid UTF-8")
-	}
-
-	content := string(payload)
-	if strings.TrimSpace(content) == "" {
-		return "", errors.New("file content is required")
+		return "", fmt.Errorf("read message file: %w", err)
 	}
 
 	return content, nil

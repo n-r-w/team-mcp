@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,6 +23,7 @@ func newTestOptions(coordination ICoordination) Options {
 		Version:             testServerVersion,
 		MaxTitleLength:      200,
 		CoordinationUseCase: coordination,
+		MessageFileReader:   nil,
 		ToolDescriptions: ToolDescriptions{
 			DeskCreate:        "",
 			TopicCreate:       "",
@@ -179,51 +179,42 @@ func TestMessageCreateContentSource(t *testing.T) {
 	require.Equal(t, "message-1", output.MessageID)
 }
 
-// TestMessageCreateFileSource verifies supported text files reach the coordination use case byte-for-byte.
+// TestMessageCreateFileSource verifies message_create stores text that file reader returns.
 func TestMessageCreateFileSource(t *testing.T) {
 	t.Parallel()
 
-	testCases := map[string]string{
-		"txt":          "message.txt",
-		"uppercase md": "message.MD",
-	}
+	content := "  first line\n" + strings.Repeat("payload line\n", 5_000)
+	filePath := "/tmp/message.md"
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	reader := NewMockIMessageFileReader(controller)
+	options := newTestOptions(coordination)
+	options.MessageFileReader = reader
+	service := New(options)
+	reader.EXPECT().ReadMessage(t.Context(), filePath).Return(content, nil)
+	coordination.EXPECT().MessageCreate(t.Context(), domain.MessageCreateRequest{
+		TopicID: "topic-1",
+		Title:   "Title",
+		Content: content,
+	}).Return(domain.MessageCreateResult{
+		Status:            domain.BusinessStatusOK,
+		MessageID:         "message-1",
+		ExistingMessageID: "",
+		StatusMessage:     "",
+	}, nil)
 
-	for name, fileName := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			content := "  first line\n" + strings.Repeat("payload line\n", 5_000)
-			filePath := filepath.Join(t.TempDir(), fileName)
-			require.NoError(t, os.WriteFile(filePath, []byte(content), 0o600))
-
-			controller := gomock.NewController(t)
-			coordination := NewMockICoordination(controller)
-			service := New(newTestOptions(coordination))
-			coordination.EXPECT().MessageCreate(t.Context(), domain.MessageCreateRequest{
-				TopicID: "topic-1",
-				Title:   "Title",
-				Content: content,
-			}).Return(domain.MessageCreateResult{
-				Status:            domain.BusinessStatusOK,
-				MessageID:         "message-1",
-				ExistingMessageID: "",
-				StatusMessage:     "",
-			}, nil)
-
-			_, output, err := service.messageCreateTool(
-				t.Context(),
-				nil,
-				messageCreateInput{
-					TopicID:  "topic-1",
-					Title:    "Title",
-					Content:  nil,
-					FilePath: new(filePath),
-				},
-			)
-			require.NoError(t, err)
-			require.Equal(t, "message-1", output.MessageID)
-		})
-	}
+	_, output, err := service.messageCreateTool(
+		t.Context(),
+		nil,
+		messageCreateInput{
+			TopicID:  "topic-1",
+			Title:    "Title",
+			Content:  nil,
+			FilePath: new(filePath),
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "message-1", output.MessageID)
 }
 
 // TestMessageCreateSourceValidation verifies exactly one non-blank message source is required.
@@ -279,76 +270,30 @@ func TestMessageCreateSourceValidation(t *testing.T) {
 	}
 }
 
-// TestMessageCreateFileValidation verifies file paths and payloads satisfy the file-source contract.
-func TestMessageCreateFileValidation(t *testing.T) {
+// TestMessageCreateFileReadError verifies message_create returns file reader error and creates no message.
+func TestMessageCreateFileReadError(t *testing.T) {
 	t.Parallel()
 
-	testCases := map[string]struct {
-		preparePath func(t *testing.T) string
-		expectedErr string
-	}{
-		"relative path": {
-			preparePath: func(_ *testing.T) string { return "message.md" },
-			expectedErr: "file_path must be absolute",
-		},
-		"unsupported extension": {
-			preparePath: func(t *testing.T) string { return filepath.Join(t.TempDir(), "message.json") },
-			expectedErr: "file_path must have a .txt or .md extension",
-		},
-		"missing file": {
-			preparePath: func(t *testing.T) string { return filepath.Join(t.TempDir(), "missing.md") },
-			expectedErr: "read file_path",
-		},
-		"directory": {
-			preparePath: func(t *testing.T) string {
-				path := filepath.Join(t.TempDir(), "directory.md")
-				require.NoError(t, os.Mkdir(path, 0o700))
+	filePath := "/etc/message.md"
+	controller := gomock.NewController(t)
+	reader := NewMockIMessageFileReader(controller)
+	options := newTestOptions(NewMockICoordination(controller))
+	options.MessageFileReader = reader
+	service := New(options)
+	readErr := errors.New("file_path must be inside allowed directory")
+	reader.EXPECT().ReadMessage(t.Context(), filePath).Return("", readErr)
 
-				return path
-			},
-			expectedErr: "file_path must reference a regular file",
+	_, _, err := service.messageCreateTool(
+		t.Context(),
+		nil,
+		messageCreateInput{
+			TopicID:  "topic-1",
+			Title:    "Title",
+			Content:  nil,
+			FilePath: new(filePath),
 		},
-		"blank file": {
-			preparePath: func(t *testing.T) string {
-				path := filepath.Join(t.TempDir(), "blank.txt")
-				require.NoError(t, os.WriteFile(path, []byte(" \n\t"), 0o600))
-
-				return path
-			},
-			expectedErr: "file content is required",
-		},
-		"invalid UTF-8": {
-			preparePath: func(t *testing.T) string {
-				path := filepath.Join(t.TempDir(), "invalid.md")
-				require.NoError(t, os.WriteFile(path, []byte{0xff, 'a'}, 0o600))
-
-				return path
-			},
-			expectedErr: "file content must be valid UTF-8",
-		},
-	}
-
-	for name, testCase := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			filePath := testCase.preparePath(t)
-			controller := gomock.NewController(t)
-			service := New(newTestOptions(NewMockICoordination(controller)))
-
-			_, _, err := service.messageCreateTool(
-				t.Context(),
-				nil,
-				messageCreateInput{
-					TopicID:  "topic-1",
-					Title:    "Title",
-					Content:  nil,
-					FilePath: new(filePath),
-				},
-			)
-			require.ErrorContains(t, err, testCase.expectedErr)
-		})
-	}
+	)
+	require.ErrorIs(t, err, readErr)
 }
 
 // TestMessageGetNotFound verifies message_get maps business not_found status into output status.
@@ -555,6 +500,7 @@ func TestNewAppliesCustomDescriptions(t *testing.T) {
 		Version:             testServerVersion,
 		MaxTitleLength:      200,
 		CoordinationUseCase: coordination,
+		MessageFileReader:   nil,
 		ToolDescriptions: ToolDescriptions{
 			DeskCreate:        "custom desk_create",
 			TopicCreate:       "custom topic_create",

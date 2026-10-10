@@ -11,26 +11,42 @@ import (
 	"github.com/n-r-w/team-mcp/internal/domain"
 )
 
-// serviceSuite exercises message export behavior against real temporary filesystems.
+// serviceSuite exercises message file behavior against real temporary filesystems.
 type serviceSuite struct {
 	suite.Suite
 	homeDir    string
+	tempDir    string
 	outsideDir string
 	service    *Service
 }
 
-// TestServiceSuite runs message file writer behavior tests.
+// TestServiceSuite runs message file behavior tests.
 func TestServiceSuite(t *testing.T) {
 	t.Parallel()
 
 	suite.Run(t, new(serviceSuite))
 }
 
-// SetupTest creates isolated home and external directories for each test.
+// SetupTest creates isolated allowed and external directories for each test.
 func (s *serviceSuite) SetupTest() {
 	s.homeDir = s.T().TempDir()
+	s.tempDir = s.T().TempDir()
 	s.outsideDir = s.T().TempDir()
-	s.service = New(s.homeDir)
+	s.service = New([]string{s.homeDir, s.tempDir})
+}
+
+// TestWritesInsideEachAllowedDirectory verifies each configured directory accepts message files.
+func (s *serviceSuite) TestWritesInsideEachAllowedDirectory() {
+	for _, dir := range []string{s.homeDir, s.tempDir} {
+		filePath := filepath.Join(dir, "nested", "message.md")
+
+		err := s.service.WriteMessage(s.T().Context(), filePath, domain.MessageFileModeCreate, "payload")
+		s.Require().NoError(err)
+
+		payload, readErr := os.ReadFile(filePath)
+		s.Require().NoError(readErr)
+		s.Equal("payload", string(payload))
+	}
 }
 
 // TestCreateWritesExactContentAndCreatesParents verifies exclusive creation preserves payload bytes and creates parents.
@@ -85,8 +101,8 @@ func (s *serviceSuite) TestOverwriteCreatesMissingFile() {
 	s.Equal("payload", string(payload))
 }
 
-// TestRejectsPathsOutsideHome verifies relative, sibling, and parent-escape paths are rejected without writes.
-func (s *serviceSuite) TestRejectsPathsOutsideHome() {
+// TestRejectsPathsOutsideAllowedDirectories verifies relative, sibling, and parent-escape paths are rejected without writes.
+func (s *serviceSuite) TestRejectsPathsOutsideAllowedDirectories() {
 	separator := string(filepath.Separator)
 	parentEscape := s.homeDir + separator + ".." + separator + filepath.Base(s.outsideDir) + separator + "escape.md"
 	testCases := map[string]string{
@@ -225,7 +241,7 @@ func (s *serviceSuite) TestAllowsRelativeInternalSymbolicLink() {
 	s.Equal("payload", string(payload))
 }
 
-// TestRootOpenFailurePropagates verifies a missing configured home produces operation context.
+// TestRootOpenFailurePropagates verifies a missing allowed directory produces operation context.
 func (s *serviceSuite) TestRootOpenFailurePropagates() {
 	s.Require().NoError(os.RemoveAll(s.homeDir))
 
@@ -236,7 +252,7 @@ func (s *serviceSuite) TestRootOpenFailurePropagates() {
 		"payload",
 	)
 	s.Require().Error(err)
-	s.Require().ErrorContains(err, "open user home directory")
+	s.Require().ErrorContains(err, "open allowed directory")
 }
 
 // TestWriteAndClosePreservesErrors verifies write and close failures remain in one returned error chain.
@@ -276,4 +292,94 @@ func (s *serviceSuite) TestRejectsUnsupportedMode() {
 	)
 	s.Require().Error(err)
 	s.Require().ErrorContains(err, "mode must be create or overwrite")
+}
+
+// TestReadReturnsExactContentFromEachAllowedDirectory verifies reads keep payload bytes and accept both supported suffixes.
+func (s *serviceSuite) TestReadReturnsExactContentFromEachAllowedDirectory() {
+	content := "  first line\nlast line  "
+	for _, filePath := range []string{
+		filepath.Join(s.homeDir, "message.txt"),
+		filepath.Join(s.tempDir, "message.MD"),
+	} {
+		s.Require().NoError(os.WriteFile(filePath, []byte(content), 0o600))
+
+		payload, err := s.service.ReadMessage(s.T().Context(), filePath)
+		s.Require().NoError(err)
+		s.Equal(content, payload)
+	}
+}
+
+// TestReadRejectsInvalidSources verifies path form, location, file kind, and payload checks of message sources.
+func (s *serviceSuite) TestReadRejectsInvalidSources() {
+	testCases := map[string]struct {
+		preparePath func() string
+		expectedErr string
+	}{
+		"relative path": {
+			preparePath: func() string { return "message.md" },
+			expectedErr: "file_path must be absolute",
+		},
+		"unsupported extension": {
+			preparePath: func() string { return filepath.Join(s.homeDir, "message.json") },
+			expectedErr: "file_path must have a .txt or .md extension",
+		},
+		"outside allowed directories": {
+			preparePath: func() string {
+				path := filepath.Join(s.outsideDir, "message.md")
+				s.Require().NoError(os.WriteFile(path, []byte("payload"), 0o600))
+
+				return path
+			},
+			expectedErr: "file_path must be inside allowed directory",
+		},
+		"external symbolic link": {
+			preparePath: func() string {
+				outsidePath := filepath.Join(s.outsideDir, "linked.md")
+				s.Require().NoError(os.WriteFile(outsidePath, []byte("payload"), 0o600))
+				linkPath := filepath.Join(s.homeDir, "linked.md")
+				s.Require().NoError(os.Symlink(outsidePath, linkPath))
+
+				return linkPath
+			},
+			expectedErr: "read file_path",
+		},
+		"missing file": {
+			preparePath: func() string { return filepath.Join(s.homeDir, "missing.md") },
+			expectedErr: "read file_path",
+		},
+		"directory": {
+			preparePath: func() string {
+				path := filepath.Join(s.homeDir, "directory.md")
+				s.Require().NoError(os.Mkdir(path, 0o700))
+
+				return path
+			},
+			expectedErr: "file_path must reference a regular file",
+		},
+		"blank file": {
+			preparePath: func() string {
+				path := filepath.Join(s.homeDir, "blank.txt")
+				s.Require().NoError(os.WriteFile(path, []byte(" \n\t"), 0o600))
+
+				return path
+			},
+			expectedErr: "file content is required",
+		},
+		"invalid UTF-8": {
+			preparePath: func() string {
+				path := filepath.Join(s.homeDir, "invalid.md")
+				s.Require().NoError(os.WriteFile(path, []byte{0xff, 'a'}, 0o600))
+
+				return path
+			},
+			expectedErr: "file content must be valid UTF-8",
+		},
+	}
+
+	for name, testCase := range testCases {
+		s.Run(name, func() {
+			_, err := s.service.ReadMessage(s.T().Context(), testCase.preparePath())
+			s.Require().ErrorContains(err, testCase.expectedErr)
+		})
+	}
 }

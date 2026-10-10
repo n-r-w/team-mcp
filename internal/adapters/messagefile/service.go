@@ -1,4 +1,4 @@
-// Package messagefile writes stored message payloads to user-selected files under one home directory.
+// Package messagefile reads and writes message files inside allowed directories.
 package messagefile
 
 import (
@@ -9,21 +9,27 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/n-r-w/team-mcp/internal/domain"
+	"github.com/n-r-w/team-mcp/internal/server"
 	"github.com/n-r-w/team-mcp/internal/usecase"
 )
 
-var _ usecase.IMessageFileWriter = (*Service)(nil)
-
-// Service writes message payloads within one configured home directory.
+// Service reads and writes message files inside allowed directories.
 type Service struct {
-	homeDir string
+	// allowedDirs lists directories that hold readable and writable message files.
+	allowedDirs []string
 }
 
-// New constructs a message file writer rooted at homeDir.
-func New(homeDir string) *Service {
-	return &Service{homeDir: filepath.Clean(homeDir)}
+var (
+	_ usecase.IMessageFileWriter = (*Service)(nil)
+	_ server.IMessageFileReader  = (*Service)(nil)
+)
+
+// New constructs a message file service for allowedDirs.
+func New(allowedDirs []string) *Service {
+	return &Service{allowedDirs: allowedDirs}
 }
 
 // WriteMessage writes exact message content to the requested destination.
@@ -33,7 +39,7 @@ func (s *Service) WriteMessage(
 	mode domain.MessageFileMode,
 	content string,
 ) (resultErr error) {
-	relativePath, err := s.resolveDestination(filePath)
+	place, err := s.resolveDestination(filePath)
 	if err != nil {
 		return err
 	}
@@ -43,22 +49,22 @@ func (s *Service) WriteMessage(
 		return err
 	}
 
-	root, err := os.OpenRoot(s.homeDir)
+	root, err := os.OpenRoot(place.dir)
 	if err != nil {
-		return fmt.Errorf("open user home directory: %w", err)
+		return fmt.Errorf("open allowed directory: %w", err)
 	}
 	defer func() {
 		if closeErr := root.Close(); closeErr != nil {
-			resultErr = errors.Join(resultErr, fmt.Errorf("close user home directory: %w", closeErr))
+			resultErr = errors.Join(resultErr, fmt.Errorf("close allowed directory: %w", closeErr))
 		}
 	}()
 
-	// Parent creation is rooted so existing symbolic links cannot redirect writes outside home.
-	if mkdirErr := root.MkdirAll(filepath.Dir(relativePath), directoryPermission); mkdirErr != nil {
+	// Parent creation is rooted so existing symbolic links cannot redirect writes outside allowed directory.
+	if mkdirErr := root.MkdirAll(filepath.Dir(place.relativePath), directoryPermission); mkdirErr != nil {
 		return fmt.Errorf("create destination directories: %w", mkdirErr)
 	}
 
-	file, err := root.OpenFile(relativePath, flags, filePermission)
+	file, err := root.OpenFile(place.relativePath, flags, filePermission)
 	if err != nil {
 		return fmt.Errorf("open destination file: %w", err)
 	}
@@ -66,30 +72,91 @@ func (s *Service) WriteMessage(
 	return writeAndClose(file, content)
 }
 
-// resolveDestination validates the public path contract and derives a root-local name.
-func (s *Service) resolveDestination(filePath string) (string, error) {
-	if strings.TrimSpace(filePath) == "" {
-		return "", errFilePathRequired
-	}
+// ReadMessage returns UTF-8 text of message source file.
+func (s *Service) ReadMessage(_ context.Context, filePath string) (_ string, resultErr error) {
 	if !filepath.IsAbs(filePath) {
 		return "", errFilePathAbsolute
 	}
 
 	cleanPath := filepath.Clean(filePath)
+	extension := strings.ToLower(filepath.Ext(cleanPath))
+	if extension != textExtension && extension != markdownExtension {
+		return "", errSourceExtension
+	}
+
+	place, err := s.locate(cleanPath)
+	if err != nil {
+		return "", err
+	}
+
+	root, err := os.OpenRoot(place.dir)
+	if err != nil {
+		return "", fmt.Errorf("open allowed directory: %w", err)
+	}
+	defer func() {
+		if closeErr := root.Close(); closeErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close allowed directory: %w", closeErr))
+		}
+	}()
+
+	// Stat before read keeps special files such as FIFO from blocking the read.
+	fileInfo, err := root.Stat(place.relativePath)
+	if err != nil {
+		return "", fmt.Errorf("read file_path: %w", err)
+	}
+	if !fileInfo.Mode().IsRegular() {
+		return "", errSourceNotRegular
+	}
+
+	payload, err := root.ReadFile(place.relativePath)
+	if err != nil {
+		return "", fmt.Errorf("read file_path: %w", err)
+	}
+	if !utf8.Valid(payload) {
+		return "", errSourceNotUTF8
+	}
+
+	content := string(payload)
+	if strings.TrimSpace(content) == "" {
+		return "", errSourceBlank
+	}
+
+	return content, nil
+}
+
+// resolveDestination validates the public destination contract and finds its allowed directory.
+func (s *Service) resolveDestination(filePath string) (filePlace, error) {
+	if strings.TrimSpace(filePath) == "" {
+		return filePlace{dir: "", relativePath: ""}, errFilePathRequired
+	}
+	if !filepath.IsAbs(filePath) {
+		return filePlace{dir: "", relativePath: ""}, errFilePathAbsolute
+	}
+
+	cleanPath := filepath.Clean(filePath)
 	extension := filepath.Ext(cleanPath)
 	if extension != textExtension && extension != markdownExtension {
-		return "", errFilePathExtension
+		return filePlace{dir: "", relativePath: ""}, errFilePathExtension
 	}
 
-	relativePath, err := filepath.Rel(s.homeDir, cleanPath)
-	if err != nil {
-		return "", fmt.Errorf("resolve destination relative to user home: %w", err)
-	}
-	if !filepath.IsLocal(relativePath) {
-		return "", errFilePathOutsideHome
+	return s.locate(cleanPath)
+}
+
+// locate finds allowed directory that holds cleanPath.
+func (s *Service) locate(cleanPath string) (filePlace, error) {
+	for _, dir := range s.allowedDirs {
+		// Rel fails when path and directory have different volumes, so such path is outside directory.
+		relativePath, err := filepath.Rel(dir, cleanPath)
+		if err == nil && filepath.IsLocal(relativePath) {
+			return filePlace{dir: dir, relativePath: relativePath}, nil
+		}
 	}
 
-	return relativePath, nil
+	return filePlace{dir: "", relativePath: ""}, fmt.Errorf(
+		"%w: %s",
+		errFilePathOutsideAllowedDirs,
+		strings.Join(s.allowedDirs, ", "),
+	)
 }
 
 // writeFlags maps the closed domain mode to operating-system open semantics.

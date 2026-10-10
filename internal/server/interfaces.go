@@ -28,6 +28,12 @@ type ICoordination interface {
 	SaveMessageToFile(ctx context.Context, request domain.SaveMessageToFileRequest) (domain.SaveMessageToFileResult, error)
 }
 
+// IMessageFileReader defines source file boundary of message_create.
+type IMessageFileReader interface {
+	// ReadMessage returns text of message source file.
+	ReadMessage(ctx context.Context, filePath string) (string, error)
+}
+
 // IMCPRuntime defines MCP runtime consumed by server adapter Run method.
 type IMCPRuntime interface {
 	// Run starts MCP server over provided transport and blocks until completion.
