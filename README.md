@@ -89,8 +89,9 @@ task build
 - `TEAM_MCP_TOOL_SAVE_MESSAGE_TO_FILE_DESC` (optional, default: built-in `save_message_to_file` description)
   * Overrides MCP `save_message_to_file` tool description.
 
-- `TEAM_MCP_SYSTEM_PROMPT` (optional, default: built-in server instructions)
-  * Overrides MCP server instructions exposed via `ServerOptions.Instructions`.
+- `TEAM_MCP_SYSTEM_PROMPT` (optional, default: no server instructions)
+  * Sets MCP server instructions exposed via `ServerOptions.Instructions`.
+  * Not safe for rules that subagents need in Claude Code: Claude Code passes server instructions only to the main agent, and subagents get only tool descriptions. Put such rules into the description of the tool that the rule concerns, with `TEAM_MCP_TOOL_*_DESC`.
 
 - `TEAM_MCP_LOG_LEVEL` (optional, default: `info`)
   * Log level for structured JSON logs.

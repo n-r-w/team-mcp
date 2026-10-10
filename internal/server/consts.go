@@ -2,58 +2,22 @@
 package server
 
 const (
+	// keepIDsRule tells orchestrators, authors, and readers of desk to keep desk references through context compaction.
+	keepIDsRule = "When you summarize or compact context, MUST keep IDs of relevant desks, topics, and messages: " +
+		"otherwise you cannot continue work with desk."
+
 	// toolDeskCreateName is MCP method name for desk_create operation.
 	toolDeskCreateName = "desk_create"
 	// toolDeskCreateDesc explains desk_create behavior to LLM tool consumers.
-	toolDeskCreateDesc = `Creates a collaboration desk for agents and returns desk_id.
-
-🚨 HOW TO USE:
-1. Create one desk per task.
-2. Create topics only for distinct workstreams.
-3. Use desk as only channel for subagent-to-subagent coordination.
-4. Start subagents only after desk, topics, and required context are ready.
-5. If you start a new task, create a new desk.
-
-🚨 MAIN RULES:
-1. Never run a subagent without required prompt template.
-2. Never pass cross-agent context outside desk. Reference desk messages instead.
-3. Only main agent can create desks and topics.
-4. Never mention desk or topic creation tools in subagent prompts.
-5. Post only task-relevant information to desk.
-6. Every desk message must be self-contained.
-7. Users DO NOT SEE desk contents, even when IDs are provided.
-
-🚨 PARALLEL EXECUTION RULES:
-1. Run subagents in parallel only if they are fully independent.
-2. A parallel batch is valid only if every subagent can start and finish without messages, outputs, or summaries from any other subagent in that batch.
-3. If one subagent needs facts, a plan, or any output from another subagent, run them sequentially.
-4. Desk is for sharing results, not for waiting, syncing, or handshakes between parallel subagents.
-
-🚨 NEW SUBAGENT SESSION:
-1. Initial prompt MUST include collaboration protocol below.
-2. Replace all {...} placeholders with actual values.
-3. Preserve all other wording and structure AS-IS.
-
-🚨 CONTINUED SUBAGENT SESSION:
-1. Continuation prompt MUST NOT repeat unchanged collaboration protocol details already available in session context.
-2. It MUST include all collaboration protocol details that changed since previous invocation.
-3. Changed details include newly relevant topic IDs and their purposes, message IDs that MUST be read before continuing, and updated posting requirements.
-4. If no collaboration protocol details changed, omit collaboration protocol from continuation prompt.
-
-"COLLABORATION PROTOCOL:
-- You have access to a shared collaboration desk with desk_id: {desk_id}. Use this desk to coordinate your job with other agents.
-- Topics to use: {List of relevant topics IDs and their purposes}.
-- MUST read before start: {List of relevant message IDs}.
-- MUST post: {What kind of messages to post, in which topics, and when}.
-- MUST save full results of your work as messages. Include in response only:
-	- Reference to messages in desk with full results.
-	- Brief summary of your job: findings, conclusions, changes, etc.
-	- Fields that your agent definition requires in response."`
+	toolDeskCreateDesc = "Creates a collaboration desk for one task and returns desk_id. " +
+		"Agents share results of task through messages in topics of desk. " +
+		"Users DO NOT SEE desk contents, even when IDs are provided. " +
+		keepIDsRule
 
 	// toolTopicCreateName is MCP method name for topic_create operation.
 	toolTopicCreateName = "topic_create"
 	// toolTopicCreateDesc explains idempotent topic creation behavior.
-	toolTopicCreateDesc = "Creates topic in desk and returns topic_id."
+	toolTopicCreateDesc = "Creates topic in desk for one workstream of task and returns topic_id."
 
 	// toolTopicListName is MCP method name for topic_list operation.
 	toolTopicListName = "topic_list"
@@ -65,9 +29,11 @@ const (
 	// toolMessageCreateDesc explains content-source and duplicate-title semantics for message_create.
 	toolMessageCreateDesc = "Creates new message in topic and returns message_id. " +
 		"Provide exactly one content source: content with message text, or file_path with an absolute path to a UTF-8 .txt or .md file inside user home directory or temporary directory (system temporary directory; on Unix also /tmp). " +
+		"Post only information that task needs. " +
 		"Remember that readers DO NOT have access to your context, so include in message all necessary information to understand its essence. " +
 		"Otherwise, critical details will be lost during information transfer. " +
-		"For complex tasks, prefer preparing message in a file and passing it via file_path, as this allows you to refine and plan content in advance."
+		"For complex tasks, prefer preparing message in a file and passing it via file_path, as this allows you to refine and plan content in advance. " +
+		keepIDsRule
 
 	// toolMessageListName is MCP method name for message_list operation.
 	toolMessageListName = "message_list"
@@ -77,7 +43,8 @@ const (
 	// toolMessageGetName is MCP method name for message_get operation.
 	toolMessageGetName = "message_get"
 	// toolMessageGetDesc explains full payload retrieval contract for message_get.
-	toolMessageGetDesc = "Returns full message payload. MUST NOT read outdated messages, e.g. previous versions, etc. Consider order of messages in topic."
+	toolMessageGetDesc = "Returns full message payload. MUST NOT read outdated messages, e.g. previous versions, etc. Consider order of messages in topic. " +
+		keepIDsRule
 
 	// toolSaveMessageToFileName is MCP method name for save_message_to_file operation.
 	toolSaveMessageToFileName = "save_message_to_file"
@@ -89,10 +56,4 @@ const (
 	serverName = "team-mcp"
 	// serverTitle is human-readable title reported by MCP runtime.
 	serverTitle = "Team MCP"
-	// systemPrompt defines tool usage policy for LLM callers.
-	systemPrompt = `Allows creating and using shared collaboration spaces for agents working on a common task.	
-
-	🚨 INFORMATION LOSS PREVENTION:
-		When performing context summarization/compaction operations, you MUST ALWAYS save identifiers of relevant desks, topics, and messages.
-		Otherwise, continuation of work will be disrupted.`
 )

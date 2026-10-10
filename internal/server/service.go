@@ -43,7 +43,7 @@ func New(options Options) *Service {
 	return src
 }
 
-// applyDefaultMetadata fills optional tool descriptions and system prompt with built-in defaults.
+// applyDefaultMetadata fills optional tool descriptions with built-in defaults.
 func applyDefaultMetadata(options *Options) {
 	if strings.TrimSpace(options.ToolDescriptions.DeskCreate) == "" {
 		options.ToolDescriptions.DeskCreate = toolDeskCreateDesc
@@ -71,10 +71,6 @@ func applyDefaultMetadata(options *Options) {
 
 	if strings.TrimSpace(options.ToolDescriptions.SaveMessageToFile) == "" {
 		options.ToolDescriptions.SaveMessageToFile = toolSaveMessageToFileDesc
-	}
-
-	if strings.TrimSpace(options.SystemPrompt) == "" {
-		options.SystemPrompt = systemPrompt
 	}
 }
 

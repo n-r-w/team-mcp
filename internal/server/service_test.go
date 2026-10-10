@@ -529,7 +529,7 @@ func TestNewAppliesCustomDescriptions(t *testing.T) {
 	require.Equal(t, "custom system prompt", service.options.SystemPrompt)
 }
 
-// TestNewFallsBackToDefaultDescriptions verifies empty overrides preserve default descriptions and prompt.
+// TestNewFallsBackToDefaultDescriptions verifies empty overrides give default descriptions and no server instructions.
 func TestNewFallsBackToDefaultDescriptions(t *testing.T) {
 	t.Parallel()
 
@@ -550,7 +550,54 @@ func TestNewFallsBackToDefaultDescriptions(t *testing.T) {
 	require.Equal(t, toolMessageListDesc, registeredTools[toolMessageListName])
 	require.Equal(t, toolMessageGetDesc, registeredTools[toolMessageGetName])
 	require.Equal(t, toolSaveMessageToFileDesc, registeredTools[toolSaveMessageToFileName])
-	require.Equal(t, systemPrompt, service.options.SystemPrompt)
+	require.Empty(t, service.options.SystemPrompt)
+}
+
+// TestDefaultDescriptionsFitClaudeCodeLimit verifies Claude Code shows default descriptions and instructions in full.
+func TestDefaultDescriptionsFitClaudeCodeLimit(t *testing.T) {
+	t.Parallel()
+
+	// claudeCodeDescriptionLimit is the smallest cap of Claude Code on MCP tool descriptions and server instructions.
+	// Byte length is not less than UTF-16 length that Claude Code counts.
+	const claudeCodeDescriptionLimit = 2048
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(newTestOptions(coordination))
+
+	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
+	require.True(t, ok)
+
+	registeredTools, err := listRegisteredToolDescriptions(t, t.Context(), runtimeServer)
+	require.NoError(t, err)
+
+	texts := map[string]string{"server instructions": service.options.SystemPrompt}
+	for name, description := range registeredTools {
+		texts[name] = description
+	}
+
+	for name, text := range texts {
+		require.LessOrEqual(t, len(text), claudeCodeDescriptionLimit, "%s has %d bytes", name, len(text))
+	}
+}
+
+// TestDefaultDescriptionsHoldKeepIDsRule verifies orchestrators, authors, and readers of desk get rule to keep IDs.
+func TestDefaultDescriptionsHoldKeepIDsRule(t *testing.T) {
+	t.Parallel()
+
+	controller := gomock.NewController(t)
+	coordination := NewMockICoordination(controller)
+	service := New(newTestOptions(coordination))
+
+	runtimeServer, ok := service.mcpRuntime.(*mcp.Server)
+	require.True(t, ok)
+
+	registeredTools, err := listRegisteredToolDescriptions(t, t.Context(), runtimeServer)
+	require.NoError(t, err)
+
+	for _, name := range []string{toolDeskCreateName, toolMessageCreateName, toolMessageGetName} {
+		require.Contains(t, registeredTools[name], keepIDsRule, name)
+	}
 }
 
 // listRegisteredToolDescriptions reads MCP server tool registry into name-to-description mapping.
